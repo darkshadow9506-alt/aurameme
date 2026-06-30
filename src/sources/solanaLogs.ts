@@ -75,9 +75,25 @@ export class SolanaLogsFeed extends EventEmitter {
   private alive = false;
   private subscribedTokens = new Set<string>();
   private subscribedWallets = new Set<string>();
+  private lastMsgAt = 0;
+  /** if no data arrives for this long, the subscription has gone silent → reconnect */
+  private static STALE_MS = 60_000;
 
   start() {
     this.connect();
+    // watchdog: pump.fun is high-volume, so a long silence means the
+    // subscription stalled (RPC throttle / silent drop). Force a reconnect.
+    setInterval(() => {
+      if (this.alive && this.lastMsgAt && Date.now() - this.lastMsgAt > SolanaLogsFeed.STALE_MS) {
+        log.warn("no data for 60s — subscription stalled, reconnecting…");
+        this.lastMsgAt = Date.now();
+        try {
+          this.ws?.close();
+        } catch {
+          /* will reconnect on close */
+        }
+      }
+    }, 20_000).unref();
   }
 
   private connect() {
@@ -92,6 +108,7 @@ export class SolanaLogsFeed extends EventEmitter {
     ws.on("open", () => {
       this.alive = true;
       this.reconnectDelay = 1000;
+      this.lastMsgAt = Date.now();
       log.ok("connected — subscribing to pump.fun program logs");
       ws.send(
         JSON.stringify({
@@ -114,6 +131,7 @@ export class SolanaLogsFeed extends EventEmitter {
   }
 
   private onMessage(text: string) {
+    this.lastMsgAt = Date.now();
     let msg: {
       method?: string;
       result?: unknown;
