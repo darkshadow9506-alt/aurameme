@@ -1,4 +1,5 @@
 import type { EntryPlan, ExitPlan, MarketFacts, Verdict } from "../types.js";
+import { activeProfile, type StrategyProfile } from "./profiles.js";
 
 export interface StrategyInput {
   score: number;
@@ -6,6 +7,8 @@ export interface StrategyInput {
   criticalSafety: boolean;
   marketFacts?: MarketFacts;
   smartSelling: boolean;
+  /** override the active profile (used by the backtest sweep) */
+  profile?: StrategyProfile;
 }
 
 /**
@@ -22,6 +25,7 @@ export function buildEntryExit(input: StrategyInput): {
   exit: ExitPlan;
 } {
   const { score, verdict, criticalSafety, marketFacts, smartSelling } = input;
+  const profile = input.profile ?? activeProfile();
 
   // ----- ENTRY -----
   const notes: string[] = [];
@@ -63,24 +67,21 @@ export function buildEntryExit(input: StrategyInput): {
   const entry: EntryPlan = { shouldEnter, reason, maxPositionPct, notes };
 
   // ----- EXIT -----
-  // Tiered take-profit ladder. The FIRST tier de-risks early (1.5x) so that,
-  // combined with moving the stop to break-even afterwards, most pumps that
-  // fade still close green instead of red — this is the main win-rate lever.
-  const takeProfits = [
-    { multiple: 1.5, sellPct: 20 }, // early de-risk → arms the break-even stop
-    { multiple: 2, sellPct: 25 },
-    { multiple: 3, sellPct: 25 },
-    { multiple: 5, sellPct: 20 },
-    { multiple: 10, sellPct: 10 }, // moonbag rides on the trailing stop
-  ];
+  // The take-profit ladder comes from the active profile. The FIRST tier
+  // de-risks early so that, combined with moving the stop to break-even
+  // afterwards, most pumps that fade still close green — the main win-rate
+  // lever. Aggressive/moon profiles sell less early and let runners go.
+  const takeProfits = profile.takeProfits;
+  const firstTp = takeProfits[0]?.multiple ?? 1.5;
 
-  // tighter stops for riskier setups
-  const stopLossPct = verdict === "STRONG_SIGNAL" ? 40 : verdict === "SIGNAL" ? 35 : 30;
-  const trailingStopPct = 35;
-  const trailingTightPct = 22; // after the 2nd TP, lock gains harder
+  // tighter stops for riskier setups, biased around the profile base
+  const stopLossPct =
+    profile.stopLossBase + (verdict === "STRONG_SIGNAL" ? 5 : verdict === "SIGNAL" ? 0 : -5);
+  const trailingStopPct = profile.trailingStopPct;
+  const trailingTightPct = profile.trailingTightPct; // after the 2nd TP, lock gains harder
 
   const exitTriggers = [
-    "✅ After the FIRST take-profit (1.5x), move your stop to BREAK-EVEN — now the trade can't become a loss.",
+    `✅ After the FIRST take-profit (${firstTp}x), move your stop to BREAK-EVEN — now the trade can't become a loss.`,
     "Smart-money wallets start SELLING → exit immediately, don't wait for the chart.",
     `Liquidity drops > 30% suddenly → likely LP pull / rug → market-sell now.`,
     "Top holder / dev wallet sends a large transfer or sell → exit.",
@@ -95,7 +96,7 @@ export function buildEntryExit(input: StrategyInput): {
     takeProfits,
     stopLossPct,
     trailingStopPct,
-    breakevenAfterFirstTp: true,
+    breakevenAfterFirstTp: profile.breakevenAfterFirstTp,
     trailingTightPct,
     exitTriggers,
   };

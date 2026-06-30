@@ -53,8 +53,11 @@ export const config = {
     /** stop tracking a token after this many minutes of life. */
     trackTtlMin: num("TRACK_TTL_MIN", 45),
     /** sudden market-cap drop (%) within the dump window => EXIT. */
-    exitDumpPct: num("EXIT_DUMP_PCT", 25),
+    exitDumpPct: num("EXIT_DUMP_PCT", 30),
   },
+  /** entry/exit aggressiveness: conservative | balanced | aggressive | moon.
+   *  Default "moon" — the profile that maximised total profit in `npm run sweep`. */
+  strategyProfile: str("STRATEGY_PROFILE", "moon"),
   dryRun: str("DRY_RUN", "1") !== "0",
 } as const;
 

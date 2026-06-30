@@ -1,4 +1,5 @@
 import { buildEntryExit } from "../signals/strategy.js";
+import { activeProfile, type StrategyProfile } from "../signals/profiles.js";
 import type { Verdict } from "../types.js";
 
 /**
@@ -48,7 +49,7 @@ export interface TradeResult {
 /** Fraction of value you actually salvage when a rug/LP-pull fires mid-exit. */
 const RUG_FILL = 0.3;
 
-export function simulatePosition(token: BtToken): TradeResult {
+export function simulatePosition(token: BtToken, profile: StrategyProfile = activeProfile()): TradeResult {
   const series = token.series;
   const verdict: Verdict = token.verdict ?? "SIGNAL";
   let entryIdx = token.entryIndex ?? 0;
@@ -58,6 +59,7 @@ export function simulatePosition(token: BtToken): TradeResult {
     verdict,
     criticalSafety: verdict === "AVOID",
     smartSelling: false,
+    profile,
   });
 
   // Confirmation entry — mirrors the live rule "get in when whales/smart money
@@ -73,7 +75,7 @@ export function simulatePosition(token: BtToken): TradeResult {
     const base = series[entryIdx].mcap;
     const window = Math.min(series.length - 1, entryIdx + 12);
     for (let i = entryIdx + 1; i <= window; i++) {
-      if (series[i].mcap >= base * 1.08) {
+      if (series[i].mcap >= base * (1 + profile.entryConfirmPct)) {
         enterAt = i;
         break;
       }
@@ -192,8 +194,8 @@ export interface BtSummary {
   results: TradeResult[];
 }
 
-export function runBacktest(tokens: BtToken[]): BtSummary {
-  const results = tokens.map(simulatePosition);
+export function runBacktest(tokens: BtToken[], profile: StrategyProfile = activeProfile()): BtSummary {
+  const results = tokens.map((t) => simulatePosition(t, profile));
   const traded = results.filter((r) => r.traded);
   const wins = traded.filter((r) => r.strategy > 1);
   const sStrat = traded.map((r) => r.strategy).sort((a, b) => a - b);

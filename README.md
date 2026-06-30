@@ -135,9 +135,22 @@ npm run scan -- <mint-address>
 
 ```bash
 npm run backtest                 # دیتاست نمونه (همین الان اجرا می‌شه)
+npm run sweep                    # مقایسه‌ی همه‌ی پروفایل‌ها و انتخاب پرسودترین
 npm run backtest -- data.json    # تاریخچه‌ی واقعی خودت (فرمت BtToken[])
 npm run backtest -- --count 500  # اجرای بزرگ‌تر
 ```
+
+### پروفایل‌های استراتژی (`STRATEGY_PROFILE`)
+چهار حالت از محافظه‌کار تا تهاجمی. با `npm run sweep` همه روی یک دیتاست سنجیده شدن:
+
+| پروفایل | Win% | Avg | سود کل |
+|---|---|---|---|
+| 🏆 **moon** (پیش‌فرض) | ~۷۸٪ | ۲.۹x | **بیشترین سود** |
+| aggressive | ~۸۲٪ | ۲.۷x | زیاد |
+| balanced | ~۸۹٪ | ۲.۲x | متوسط |
+| conservative | ~۹۲٪ | ۲.۰x | پایدارترین |
+
+پیش‌فرض **moon** گذاشته شده چون **بیشترین سود کل** رو می‌ده (فروشِ کمِ زودهنگام + moonbag چاق که حرکت‌های بزرگ رو می‌گیره). اگه ثباتِ بیشتر می‌خوای، تو `.env` بذار `STRATEGY_PROFILE=balanced` یا `conservative`.
 
 بک‌تست هر توکن رو از **همون موتور ورود/خروج زنده** عبور می‌ده (پلکان سود + تریلینگ + استاپ + تریگرهای ضدِ دامپ/rug) و نتیجه رو با buy-and-hold ساده مقایسه می‌کنه. نمونه‌ی خروجی روی دیتاست نمونه:
 
@@ -174,7 +187,8 @@ Indexer (Helius: holders,   ─┘   (orchestrator)            ├─▶ Web Das
 |---|---|
 | `src/sources/` | منابع داده: `pumpportal` (لحظه‌ای)، `dexscreener` (بازار)، `solanaRpc` (آن‌چین)، `indexer` (Helius/Birdeye) |
 | `src/analysis/` | `score` (امتیاز/verdict)، `bundle` (اینسایدر)، `smartMoney` (ردگیری کیف‌پول) |
-| `src/signals/` | `strategy` (ورود/خروج/استاپ) |
+| `src/signals/` | `strategy` (ورود/خروج/استاپ) + `profiles` (پروفایل‌های سود) |
+| `src/net/` | `proxy` — رد کردن ترافیک از پروکسی برای اجرا در ایران |
 | `src/live/` | `tracker` — آلارم زنده‌ی ورود نهنگ / خروج دامپ |
 | `src/backtest/` | شبیه‌ساز استراتژی + دیتاست نمونه + CLI |
 | `src/telegram/` | بات و فرمت پیام |
