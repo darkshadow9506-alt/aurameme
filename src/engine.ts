@@ -76,15 +76,27 @@ export class Engine extends EventEmitter {
   private async gradeLaunch(ev: PumpEvent) {
     this.pending.delete(ev.mint);
     const { facts: bundleFacts, buyers } = this.collector.finalize(ev.mint);
+
+    // Firehose control: a token that attracted ZERO buys in the observation
+    // window is dead on arrival — skip it so we don't waste rate-limited API
+    // calls (and risk a free RPC tier) on launches nobody touched.
+    if (bundleFacts.earlyBuyerCount === 0) {
+      this.feed.unwatchToken(ev.mint);
+      return;
+    }
+
     // NOTE: the token stays subscribed here. If it's trackable we hand it to the
     // tracker (which needs the live trade stream); only non-trackable tokens are
     // unwatched below, so we don't kill the entry/exit feed.
     try {
       // deep bundle detection: do many early buyers share one SOL funder?
-      const cluster = await clusterEarlyBuyers(buyers);
-      if (cluster) {
-        bundleFacts.funderClusterSize = cluster.largestCluster;
-        bundleFacts.funderGroups = cluster.funderGroups;
+      // Heavy (many RPC calls per token) — opt-in via ENABLE_FUNDER_CLUSTER.
+      if (config.engine.enableFunderCluster) {
+        const cluster = await clusterEarlyBuyers(buyers);
+        if (cluster) {
+          bundleFacts.funderClusterSize = cluster.largestCluster;
+          bundleFacts.funderGroups = cluster.funderGroups;
+        }
       }
       const analysis = await this.analyzeMint(ev.mint, {
         name: ev.name,

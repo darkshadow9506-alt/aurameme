@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import { makeLogger } from "../util/logger.js";
+import { limitedFetch } from "../net/limit.js";
 import type { MarketFacts } from "../types.js";
 
 const log = makeLogger("dexscreener");
@@ -25,7 +26,7 @@ interface DexPair {
  */
 export async function getMarketFacts(mint: string): Promise<MarketFacts | null> {
   try {
-    const res = await fetch(`${config.dexscreenerBase}/latest/dex/tokens/${mint}`);
+    const res = await limitedFetch(`${config.dexscreenerBase}/latest/dex/tokens/${mint}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = (await res.json()) as { pairs?: DexPair[] };
     const pairs = (json.pairs ?? []).filter((p) => p.chainId === "solana");
@@ -51,7 +52,9 @@ export async function getMarketFacts(mint: string): Promise<MarketFacts | null> 
       url: best.url ?? null,
     };
   } catch (e) {
-    log.warn(`getMarketFacts(${mint.slice(0, 6)}…) failed:`, (e as Error).message);
+    // Fresh pump.fun tokens legitimately have no DexScreener pair yet, so this
+    // is expected noise — keep it at debug level.
+    log.debug(`getMarketFacts(${mint.slice(0, 6)}…) failed:`, (e as Error).message);
     return emptyMarket(mint);
   }
 }

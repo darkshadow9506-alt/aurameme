@@ -1,6 +1,7 @@
 import { config } from "../config.js";
 import { makeLogger } from "../util/logger.js";
 import { getAccountOwners, SYSTEM_PROGRAM } from "./solanaRpc.js";
+import { limitedFetch } from "../net/limit.js";
 import type { HolderFacts } from "../types.js";
 
 const log = makeLogger("indexer");
@@ -63,7 +64,7 @@ async function getHolderStatsHelius(mint: string): Promise<HolderFacts | null> {
   const MAX_PAGES = 10; // up to ~10k holders is plenty for grading
 
   while (page <= MAX_PAGES) {
-    const res = await fetch(heliusRpc(), {
+    const res = await limitedFetch(heliusRpc(), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -148,8 +149,8 @@ interface BirdeyeSecurity {
 async function getHolderStatsBirdeye(mint: string): Promise<HolderFacts | null> {
   const headers = { "X-API-KEY": config.birdeyeApiKey, "x-chain": "solana" };
   const [secRes, ovRes] = await Promise.all([
-    fetch(`https://public-api.birdeye.so/defi/token_security?address=${mint}`, { headers }),
-    fetch(`https://public-api.birdeye.so/defi/token_overview?address=${mint}`, { headers }),
+    limitedFetch(`https://public-api.birdeye.so/defi/token_security?address=${mint}`, { headers }),
+    limitedFetch(`https://public-api.birdeye.so/defi/token_overview?address=${mint}`, { headers }),
   ]);
   const sec = (secRes.ok ? await secRes.json() : {}) as BirdeyeSecurity;
   const ov = (ovRes.ok ? await ovRes.json() : {}) as { data?: { holder?: number } };
@@ -207,7 +208,7 @@ export async function clusterEarlyBuyers(
 
 /** Best-effort: who first funded this (likely fresh) wallet with SOL? */
 async function getEarliestFunder(wallet: string): Promise<string | null> {
-  const sigsRes = await fetch(heliusRpc(), {
+  const sigsRes = await limitedFetch(heliusRpc(), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -222,7 +223,7 @@ async function getEarliestFunder(wallet: string): Promise<string | null> {
   if (sigs.length === 0 || sigs.length >= 1000) return null; // empty or too active to be a fresh bundle wallet
   const oldest = sigs[sigs.length - 1].signature;
 
-  const txRes = await fetch(heliusRpc(), {
+  const txRes = await limitedFetch(heliusRpc(), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({

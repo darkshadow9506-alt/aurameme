@@ -49,7 +49,11 @@ export const config = {
     discoveryMinProfitSol: num("DISCOVERY_MIN_PROFIT_SOL", 1),
     /** cap on how many wallets we subscribe to (websocket budget). */
     maxWatchedWallets: num("MAX_WATCHED_WALLETS", 300),
+    /** funder-cluster bundle check is heavy (many RPC calls); off by default. */
+    enableFunderCluster: str("ENABLE_FUNDER_CLUSTER", "0") !== "0",
   },
+  /** max simultaneous outbound API requests (protects free RPC tiers & the VPN). */
+  maxConcurrentRequests: num("MAX_CONCURRENT_REQUESTS", 5),
   live: {
     /** a single buy >= this many SOL counts as a "whale" buy (entry trigger). */
     whaleBuySol: num("WHALE_BUY_SOL", 2),

@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import { makeLogger } from "../util/logger.js";
+import { limitedFetch } from "../net/limit.js";
 import type { MintFacts, HolderFacts } from "../types.js";
 
 const log = makeLogger("solana");
@@ -10,7 +11,7 @@ const log = makeLogger("solana");
  * heavyweight @solana/web3.js / spl-token packages.
  */
 async function rpc<T>(method: string, params: unknown[]): Promise<T> {
-  const res = await fetch(config.solanaRpcUrl, {
+  const res = await limitedFetch(config.solanaRpcUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
