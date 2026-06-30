@@ -64,8 +64,10 @@ export function analyzeEarlyTrades(
   events: PumpEvent[],
 ): BundleFacts {
   const buys = events.filter((e) => e.txType === "buy");
+  const sells = events.filter((e) => e.txType === "sell");
   const byWallet = new Map<string, number>(); // wallet -> token amount
   let totalTokensBought = 0;
+  let earlySolVolume = 0;
 
   // "bundle window": buys landing within 1.5s of creation look automated
   const BUNDLE_WINDOW_MS = 1500;
@@ -76,8 +78,15 @@ export function analyzeEarlyTrades(
     const amt = e.tokenAmount ?? 0;
     byWallet.set(w, (byWallet.get(w) ?? 0) + amt);
     totalTokensBought += amt;
+    earlySolVolume += e.solAmount ?? 0;
     if (e.receivedAt - createdAt <= BUNDLE_WINDOW_MS) bundledBuys++;
   }
+
+  // latest market cap seen in the window (SOL), as a momentum reference
+  const earlyMarketCapSol = events
+    .map((e) => e.marketCapSol)
+    .filter((m): m is number => typeof m === "number")
+    .at(-1);
 
   // Supply captured by the snipers, relative to the pump.fun virtual supply.
   // pump.fun tokens have a fixed 1B supply; the bonding curve holds most of it
@@ -93,5 +102,9 @@ export function analyzeEarlyTrades(
     earlyBuyerCount: byWallet.size,
     sniperSupplyPct,
     clusterCount: bundledBuys,
+    earlySolVolume,
+    earlyMarketCapSol,
+    earlyBuys: buys.length,
+    earlySells: sells.length,
   };
 }

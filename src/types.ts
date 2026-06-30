@@ -72,6 +72,15 @@ export interface BundleFacts {
   funderClusterSize?: number;
   /** how many distinct funding sources backed the early buyers (indexer) */
   funderGroups?: number;
+  // ---- early on-chain momentum (used for opportunity on fresh bonding-curve
+  //      tokens that DexScreener doesn't list yet) ----
+  /** total SOL spent buying in the observation window */
+  earlySolVolume?: number;
+  /** most recent market cap (SOL) seen in the window */
+  earlyMarketCapSol?: number;
+  /** buy / sell counts in the window */
+  earlyBuys?: number;
+  earlySells?: number;
 }
 
 export interface SmartMoneyHit {

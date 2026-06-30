@@ -199,6 +199,41 @@ export function scoreToken(input: ScoreInput): Analysis {
     if (mc > 15_000 && mc < 300_000) opp += 8;
   }
 
+  // On-chain momentum for FRESH bonding-curve tokens that DexScreener doesn't
+  // list yet (no USD liquidity). Their "opportunity" is the early traction we
+  // saw on the trade stream: real buyers, SOL volume, and buy pressure.
+  const hasMarketData = (market?.liquidityUsd ?? 0) > 0;
+  if (!hasMarketData && bf) {
+    if (bf.earlyBuyerCount >= 12) opp += 20;
+    else if (bf.earlyBuyerCount >= 6) opp += 13;
+    else if (bf.earlyBuyerCount >= 3) opp += 7;
+    else if (bf.earlyBuyerCount >= 2) opp += 3;
+
+    const vol = bf.earlySolVolume ?? 0;
+    if (vol >= 8) opp += 18;
+    else if (vol >= 3) opp += 11;
+    else if (vol >= 1) opp += 5;
+
+    const eb = bf.earlyBuys ?? 0;
+    const es = bf.earlySells ?? 0;
+    if (eb + es >= 5) {
+      const buyRatio = eb / (eb + es);
+      if (buyRatio >= 0.7) opp += 10;
+      else if (buyRatio >= 0.55) opp += 5;
+      else if (buyRatio < 0.4)
+        redFlags.push({
+          code: "EARLY_SELL_PRESSURE",
+          severity: "medium",
+          message: `Early flow is mostly sells (${(buyRatio * 100).toFixed(0)}% buys) — dumping at launch.`,
+        });
+    }
+
+    // market cap climbing past the ~28-30 SOL launch floor = real buying
+    const mcSol = bf.earlyMarketCapSol ?? 0;
+    if (mcSol >= 45 && mcSol <= 600) opp += 8;
+    else if (mcSol > 600) opp += 4;
+  }
+
   // smart money is the strongest opportunity signal
   const smartBuys = smartMoney.filter((s) => s.action === "buy");
   const smartSells = smartMoney.filter((s) => s.action === "sell");
