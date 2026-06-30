@@ -179,13 +179,11 @@ export class Engine extends EventEmitter {
     this.stats.graded++;
     this.emit("analysis", a);
 
-    const passesLiquidity =
-      (a.marketFacts?.liquidityUsd ?? 0) >= config.engine.minLiquidityUsd ||
-      a.smartMoney.some((s) => s.action === "buy");
-
-    if (a.score >= config.engine.signalMinScore && passesLiquidity) {
+    // Only the strict, high-conviction picks become signals (a few a day) —
+    // safe + organic demand + whale/smart money + pumping. Quality over quantity.
+    if (a.conviction) {
       this.stats.signals++;
-      log.ok(`SIGNAL ${a.verdict} ${a.score} — ${a.symbol ?? a.mint.slice(0, 8)}`);
+      log.ok(`🔥 CONVICTION SIGNAL ${a.score} — ${a.symbol ?? a.mint.slice(0, 8)}`);
       this.emit("signal", a);
     } else {
       log.debug(`graded ${a.verdict} ${a.score} — ${a.mint.slice(0, 8)}`);

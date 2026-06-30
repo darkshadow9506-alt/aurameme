@@ -76,7 +76,6 @@ export class Tracker extends EventEmitter {
       verdict: a.verdict,
       score: a.score,
       openedAt: Date.now(),
-      entryMcap: null,
       peakMcap: 0,
       lastMcap: 0,
       topHolders: new Set((a.holderFacts?.topHolders ?? []).map((h) => h.owner)),
@@ -84,9 +83,12 @@ export class Tracker extends EventEmitter {
       trailingStopPct: a.exit.trailingStopPct,
       firstTpMult: a.exit.takeProfits[0]?.multiple ?? 1.5,
       breakevenArmed: false,
-      entered: false,
+      // a conviction token IS the entry signal → mark it entered so exit
+      // triggers (dump / smart-sell / trailing / stop) arm immediately.
+      entered: a.conviction,
+      entryMcap: a.conviction ? (a.bundleFacts?.earlyMarketCapSol ?? null) : null,
       exited: false,
-      entryAlerted: false,
+      entryAlerted: a.conviction,
       lastWarnAt: 0,
       lastAccumAt: 0,
       window: [],

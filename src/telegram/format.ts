@@ -18,11 +18,17 @@ function esc(s: string): string {
 export function formatSignal(a: Analysis): string {
   const m = a.marketFacts;
   const lines: string[] = [];
-  const title = `${VERDICT_EMOJI[a.verdict]} <b>${esc(a.name ?? a.symbol ?? "Unknown")}</b>` +
+  const head = a.conviction ? "🔥 HIGH-CONVICTION SIGNAL" : VERDICT_EMOJI[a.verdict];
+  const title = `${head} <b>${esc(a.name ?? a.symbol ?? "Unknown")}</b>` +
     (a.symbol ? ` <code>$${esc(a.symbol)}</code>` : "");
   lines.push(title);
   lines.push(`Verdict: <b>${a.verdict.replace("_", " ")}</b>  •  Score: <b>${a.score}/100</b>`);
   lines.push(`<code>${a.mint}</code>`);
+  if (a.convictionReasons.length) {
+    lines.push("");
+    lines.push("<b>Why this passed the filter:</b>");
+    for (const r of a.convictionReasons) lines.push(esc(r));
+  }
   lines.push("");
 
   // market snapshot

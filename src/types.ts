@@ -174,6 +174,9 @@ export interface Analysis {
   scoredAt: number;
   score: number; // 0-100
   verdict: Verdict;
+  /** the strict "safe + organic demand + whale/insider-backed + pumping" gate */
+  conviction: boolean;
+  convictionReasons: string[];
   mintFacts?: MintFacts;
   holderFacts?: HolderFacts;
   marketFacts?: MarketFacts;

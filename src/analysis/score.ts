@@ -265,6 +265,37 @@ export function scoreToken(input: ScoreInput): Analysis {
   score = clamp(score, 0, 100);
 
   const verdict = toVerdict(score, criticalSafety);
+
+  // ---------- CONVICTION: the strict "post only the best" gate ----------
+  // Every condition must hold: genuinely safe, organically distributed (not
+  // insider/whale-dominated), not bundled, real buyer demand, big money in, and
+  // actually pumping. This is what gets pushed to Telegram — a few a day, not
+  // thousands of junk launches.
+  const convictionReasons: string[] = [];
+  const safeAuth =
+    !criticalSafety && mf?.freezeAuthorityRenounced === true && mf?.mintAuthorityRenounced === true;
+  const holdersOrganic = Boolean(
+    hf && hf.topHolderPct <= 30 && hf.top10Pct <= 60 && (hf.holderCount == null || hf.holderCount >= 12),
+  );
+  const notBundled =
+    !bf || ((bf.clusterCount ?? 0) <= 4 && (bf.sniperSupplyPct ?? 0) <= 25 && (bf.funderClusterSize ?? 0) < 4);
+  const realDemand = Boolean(
+    bf &&
+      bf.earlyBuyerCount >= 12 &&
+      (bf.earlySolVolume ?? 0) >= 5 &&
+      (bf.earlyBuys ?? 0) / Math.max(1, (bf.earlyBuys ?? 0) + (bf.earlySells ?? 0)) >= 0.6,
+  );
+  const pumping = (bf?.earlyMarketCapSol ?? 0) >= 45 || (market?.liquidityUsd ?? 0) >= 8000;
+  const bigMoneyIn = smartBuys.length > 0 || (bf?.earlySolVolume ?? 0) >= 8;
+  const conviction =
+    safeAuth && holdersOrganic && notBundled && realDemand && pumping && bigMoneyIn;
+  if (conviction) {
+    convictionReasons.push("✅ authorities renounced — no rug switches");
+    convictionReasons.push("✅ organic holder spread (not insider-dominated)");
+    convictionReasons.push(`✅ real demand: ${bf?.earlyBuyerCount} buyers, ${(bf?.earlySolVolume ?? 0).toFixed(1)} SOL`);
+    convictionReasons.push(smartBuys.length ? "✅ smart money is in" : "✅ whale-sized money in");
+  }
+
   const { entry, exit } = buildEntryExit({
     score,
     verdict,
@@ -280,6 +311,8 @@ export function scoreToken(input: ScoreInput): Analysis {
     scoredAt: Date.now(),
     score,
     verdict,
+    conviction,
+    convictionReasons,
     mintFacts: mf ?? undefined,
     holderFacts: hf ?? undefined,
     marketFacts: market ?? undefined,

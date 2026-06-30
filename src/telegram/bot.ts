@@ -5,7 +5,7 @@ import { engine } from "../engine.js";
 import { store } from "../store/store.js";
 import { tracker } from "../live/tracker.js";
 import { activeProfile } from "../signals/profiles.js";
-import { formatSignal, formatShort, formatAlert, formatExitPlan, formatUserExit } from "./format.js";
+import { formatSignal, formatShort, formatExitPlan, formatUserExit } from "./format.js";
 import type { Analysis, Alert } from "../types.js";
 
 const log = makeLogger("telegram");
@@ -149,19 +149,14 @@ export function startTelegram(): Bot | null {
   const imInButton = (mint: string) =>
     new InlineKeyboard().text("✅ I'm in — tell me when to sell", `in:${mint}`);
 
-  // a graded SIGNAL → push with an "I'm in" button
+  // Telegram gets ONLY the strict conviction signals (a few a day) with an
+  // "I'm in" button — the safest, whale/demand-backed, explosive picks.
   engine.on("signal", (a: Analysis) => void pushAll(formatSignal(a), imInButton(a.mint)));
 
-  // live entry/exit alerts
+  // Live exits are pushed ONLY to users who tapped "I'm in" (personalized).
+  // No generic entry/exit broadcast — that was the noise.
   engine.on("alert", (al: Alert) => {
-    if (al.kind === "ENTRY") {
-      void pushAll(formatAlert(al), imInButton(al.mint));
-    } else {
-      // general alert to everyone…
-      void pushAll(formatAlert(al));
-      // …plus a personalized EXIT ping to anyone who tapped "I'm in" on this token
-      if (al.kind === "EXIT" || al.kind === "EXIT_WARNING") notifyHolders(al);
-    }
+    if (al.kind === "EXIT" || al.kind === "EXIT_WARNING") void notifyHolders(al);
   });
 
   const notifyHolders = async (al: Alert) => {
