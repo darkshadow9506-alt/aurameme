@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AuraMeme — memecoin radar</title>
+<style>
+  :root {
+    --bg:#0b0e14; --panel:#131826; --panel2:#1a2133; --txt:#e6e9f0; --mut:#8a93a8;
+    --line:#222a3d; --green:#27d17f; --red:#ff5d6c; --yellow:#ffcc4d; --blue:#5aa9ff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.45 ui-sans-serif,system-ui,Segoe UI,Roboto,Arial; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px; position:sticky; top:0; background:var(--bg); z-index:5; }
+  header h1 { font-size:18px; margin:0; }
+  header .dot { width:9px; height:9px; border-radius:50%; background:var(--red); }
+  header .dot.live { background:var(--green); box-shadow:0 0 8px var(--green); }
+  .mut { color:var(--mut); }
+  .wrap { display:grid; grid-template-columns:1fr 420px; gap:16px; padding:16px 20px; }
+  @media (max-width:980px){ .wrap{ grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); margin:0; padding:12px 14px; border-bottom:1px solid var(--line); }
+  .controls { display:flex; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; align-items:center; }
+  input,select,button { background:var(--panel2); color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:7px 10px; font:inherit; }
+  button { cursor:pointer; }
+  button:hover { border-color:var(--blue); }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--mut); font-weight:600; font-size:12px; }
+  tr.row { cursor:pointer; }
+  tr.row:hover { background:var(--panel2); }
+  .badge { padding:2px 8px; border-radius:999px; font-size:12px; font-weight:700; }
+  .v-STRONG_SIGNAL{ background:rgba(39,209,127,.18); color:var(--green);}
+  .v-SIGNAL{ background:rgba(90,169,255,.18); color:var(--blue);}
+  .v-WATCH{ background:rgba(255,204,77,.16); color:var(--yellow);}
+  .v-RISKY{ background:rgba(255,93,108,.14); color:var(--red);}
+  .v-AVOID{ background:rgba(255,93,108,.22); color:var(--red);}
+  .score { font-variant-numeric:tabular-nums; font-weight:700; }
+  .detail { padding:14px; }
+  .detail h3 { margin:.2em 0; }
+  .flag { padding:6px 10px; border-radius:8px; margin:6px 0; font-size:13px; }
+  .flag.red{ background:rgba(255,93,108,.10); border-left:3px solid var(--red); }
+  .flag.green{ background:rgba(39,209,127,.10); border-left:3px solid var(--green); }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:8px 0; }
+  .kv div:nth-child(odd){ color:var(--mut); }
+  a { color:var(--blue); text-decoration:none; }
+  a:hover{ text-decoration:underline; }
+  .pill { display:inline-block; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:3px 8px; margin:2px; font-size:12px; }
+  .empty { padding:24px; text-align:center; color:var(--mut); }
+  code { background:var(--panel2); padding:1px 5px; border-radius:5px; }
+</style>
+</head>
+<body>
+<header>
+  <span id="liveDot" class="dot"></span>
+  <h1>🔮 AuraMeme</h1>
+  <span class="mut">pump.fun safety & signal radar</span>
+  <span class="mut" style="margin-left:auto" id="stat"></span>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <div class="controls">
+      <input id="search" placeholder="Paste a mint to analyze…" style="flex:1;min-width:180px" />
+      <button onclick="checkMint()">Analyze</button>
+      <select id="filter" onchange="render()">
+        <option value="all">All</option>
+        <option value="signal">Signals only</option>
+        <option value="safe">Not AVOID</option>
+      </select>
+      <label class="mut"><input type="checkbox" id="auto" checked /> live</label>
+    </div>
+    <table>
+      <thead><tr><th>Token</th><th>Verdict</th><th>Score</th><th>Liq</th><th>MC</th><th>1h</th><th>Flags</th></tr></thead>
+      <tbody id="rows"><tr><td colspan="7" class="empty">Waiting for tokens…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Detail</h2>
+    <div id="detail" class="detail"><div class="empty">Select a token to see the full analysis & plan.</div></div>
+  </div>
+</div>
+
+<script>
+const fmtUsd = n => n==null||!isFinite(n)?"—":n>=1e6?"$"+(n/1e6).toFixed(2)+"M":n>=1e3?"$"+(n/1e3).toFixed(1)+"K":"$"+(+n).toFixed(2);
+const fmtPct = n => n==null||!isFinite(n)?"—":(n>0?"+":"")+(+n).toFixed(1)+"%";
+let data = new Map();
+
+function render(){
+  const filter = document.getElementById('filter').value;
+  let list = [...data.values()].sort((a,b)=>b.scoredAt-a.scoredAt);
+  if(filter==='signal') list = list.filter(a=>a.verdict==='SIGNAL'||a.verdict==='STRONG_SIGNAL');
+  if(filter==='safe') list = list.filter(a=>a.verdict!=='AVOID');
+  const rows = document.getElementById('rows');
+  if(!list.length){ rows.innerHTML='<tr><td colspan="7" class="empty">No tokens match.</td></tr>'; return; }
+  rows.innerHTML = list.slice(0,120).map(a=>{
+    const m=a.marketFacts||{};
+    return `<tr class="row" onclick='showDetail(${JSON.stringify(a.mint)})'>
+      <td>${esc(a.symbol||a.name||a.mint.slice(0,8))}</td>
+      <td><span class="badge v-${a.verdict}">${a.verdict.replace('_',' ')}</span></td>
+      <td class="score">${a.score}</td>
+      <td>${fmtUsd(m.liquidityUsd)}</td>
+      <td>${fmtUsd(m.marketCapUsd)}</td>
+      <td>${fmtPct(m.priceChange&&m.priceChange.h1)}</td>
+      <td class="mut">${a.redFlags.length}🔴 ${a.greenFlags.length}🟢</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('stat').textContent = data.size+" tokens graded";
+}
+
+function showDetail(mint){
+  const a = data.get(mint); if(!a) return;
+  const m=a.marketFacts||{};
+  const tp=a.exit.takeProfits.map(t=>`${t.multiple}x→${t.sellPct}%`).join(', ');
+  document.getElementById('detail').innerHTML = `
+    <h3>${esc(a.name||a.symbol||'Unknown')} <span class="badge v-${a.verdict}">${a.verdict.replace('_',' ')}</span> <span class="score">${a.score}/100</span></h3>
+    <div class="mut"><code>${a.mint}</code></div>
+    <div class="kv">
+      <div>Price</div><div>${m.priceUsd?('$'+(+m.priceUsd).toPrecision(3)):'—'}</div>
+      <div>Liquidity</div><div>${fmtUsd(m.liquidityUsd)}</div>
+      <div>Market cap</div><div>${fmtUsd(m.marketCapUsd)}</div>
+      <div>Volume 24h</div><div>${fmtUsd(m.volume24hUsd)}</div>
+      <div>1h change</div><div>${fmtPct(m.priceChange&&m.priceChange.h1)}</div>
+      <div>Mint auth</div><div>${a.mintFacts?(a.mintFacts.mintAuthorityRenounced?'renounced ✅':'LIVE ⚠️'):'—'}</div>
+      <div>Freeze auth</div><div>${a.mintFacts?(a.mintFacts.freezeAuthorityRenounced?'renounced ✅':'LIVE 🛑'):'—'}</div>
+      <div>Top holder</div><div>${a.holderFacts?a.holderFacts.topHolderPct.toFixed(1)+'%':'—'}</div>
+    </div>
+    ${a.greenFlags.map(g=>`<div class="flag green">🟢 ${esc(g)}</div>`).join('')}
+    ${a.redFlags.map(f=>`<div class="flag red">🔴 [${f.severity}] ${esc(f.message)}</div>`).join('')}
+    <h3>🎯 Plan</h3>
+    <div><b>Entry:</b> ${a.entry.shouldEnter?'YES':'WAIT'} — ${esc(a.entry.reason)}</div>
+    ${a.entry.shouldEnter?`<div><b>Max size:</b> ${a.entry.maxPositionPct}% of memecoin budget</div>`:''}
+    <div><b>Take profit:</b> ${tp}</div>
+    <div><b>Stop:</b> -${a.exit.stopLossPct}% • <b>Trailing:</b> -${a.exit.trailingStopPct}% from peak</div>
+    <div style="margin-top:6px"><b>Exit triggers:</b></div>
+    ${a.exit.exitTriggers.map(t=>`<div class="flag red">${esc(t)}</div>`).join('')}
+    <div style="margin-top:10px">
+      ${m.url?`<a class="pill" href="${m.url}" target="_blank">Chart</a>`:''}
+      <a class="pill" href="https://pump.fun/${a.mint}" target="_blank">pump.fun</a>
+      <a class="pill" href="https://jup.ag/swap/SOL-${a.mint}" target="_blank">Trade · Jupiter</a>
+      <a class="pill" href="https://solscan.io/token/${a.mint}" target="_blank">Solscan</a>
+    </div>
+    <p class="mut" style="margin-top:12px">Not financial advice. Memecoins are extreme risk — only money you can lose.</p>`;
+}
+
+function esc(s){ return String(s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+
+async function checkMint(){
+  const mint=document.getElementById('search').value.trim();
+  if(!mint) return;
+  document.getElementById('detail').innerHTML='<div class="empty">Analyzing…</div>';
+  try{
+    const a=await fetch('/api/token/'+mint).then(r=>r.json());
+    if(a.error){ document.getElementById('detail').innerHTML='<div class="empty">'+esc(a.error)+'</div>'; return; }
+    data.set(a.mint,a); render(); showDetail(a.mint);
+  }catch(e){ document.getElementById('detail').innerHTML='<div class="empty">Failed.</div>'; }
+}
+
+async function load(){
+  const list=await fetch('/api/recent?limit=120').then(r=>r.json());
+  for(const a of list) data.set(a.mint,a);
+  render();
+}
+
+function connect(){
+  const es=new EventSource('/api/stream');
+  es.onopen=()=>document.getElementById('liveDot').classList.add('live');
+  es.onerror=()=>document.getElementById('liveDot').classList.remove('live');
+  const onMsg=e=>{ if(!document.getElementById('auto').checked) return; const a=JSON.parse(e.data); data.set(a.mint,a); render(); };
+  es.addEventListener('analysis',onMsg);
+  es.addEventListener('signal',onMsg);
+}
+
+load(); connect();
+</script>
+</body>
+</html>
