@@ -58,9 +58,9 @@ export const config = {
   maxConcurrentRequests: num("MAX_CONCURRENT_REQUESTS", 5),
   live: {
     /** a single buy >= this many SOL counts as a "whale" buy (entry trigger). */
-    whaleBuySol: num("WHALE_BUY_SOL", 2),
+    whaleBuySol: num("WHALE_BUY_SOL", 3),
     /** a single sell >= this many SOL counts as a "whale" dump (exit trigger). */
-    whaleSellSol: num("WHALE_SELL_SOL", 2),
+    whaleSellSol: num("WHALE_SELL_SOL", 3),
     /** max tokens tracked live at once (websocket budget). */
     trackMaxTokens: num("TRACK_MAX_TOKENS", 150),
     /** stop tracking a token after this many minutes of life. */

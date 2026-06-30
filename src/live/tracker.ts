@@ -115,7 +115,6 @@ export class Tracker extends EventEmitter {
 
     const trader = ev.traderPublicKey;
     const smart = trader ? store.isSmart(trader) : undefined;
-    const isTop = trader ? p.topHolders.has(trader) : false;
     const sol = ev.solAmount ?? 0;
 
     // record SOL in/out per wallet so we can auto-discover profitable traders
@@ -127,42 +126,33 @@ export class Tracker extends EventEmitter {
     }
 
     if (ev.txType === "buy") {
+      // ENTRY only on a REAL whale buy or a tracked smart-money wallet — never
+      // on tiny buys or just "a top holder", which flooded the feed with noise.
+      // One ENTRY per token (entryAlerted), so no accumulation spam either.
       const isWhaleBuy = sol >= config.live.whaleBuySol;
-      if (smart || isWhaleBuy || isTop) {
-        if (!p.entryAlerted) {
-          p.entered = true;
-          p.entryAlerted = true;
-          p.entryMcap = mcap;
-          this.fire(p, {
-            kind: "ENTRY",
-            terminal: false,
-            reason: smart
-              ? `🧠 Smart-money "${smart.label}" is BUYING (${sol.toFixed(2)} SOL).`
-              : isTop
-                ? `🐳 A top holder is adding (${sol.toFixed(2)} SOL).`
-                : `🐳 Whale BUY of ${sol.toFixed(2)} SOL.`,
-            trader,
-            traderLabel: smart?.label,
-            solAmount: sol,
-            marketCapSol: mcap,
-          });
-        } else if (now - p.lastAccumAt > ACCUM_COOLDOWN_MS) {
-          p.lastAccumAt = now;
-          this.fire(p, {
-            kind: "ACCUMULATION",
-            terminal: false,
-            reason: `➕ More buying pressure (${sol.toFixed(2)} SOL ${smart ? "smart" : "whale"}).`,
-            trader,
-            traderLabel: smart?.label,
-            solAmount: sol,
-            marketCapSol: mcap,
-          });
-        }
+      if ((smart || isWhaleBuy) && !p.entryAlerted) {
+        p.entered = true;
+        p.entryAlerted = true;
+        p.entryMcap = mcap;
+        this.fire(p, {
+          kind: "ENTRY",
+          terminal: false,
+          reason: smart
+            ? `🧠 Smart-money "${smart.label}" is BUYING (${sol.toFixed(2)} SOL).`
+            : `🐳 Whale BUY of ${sol.toFixed(2)} SOL.`,
+          trader,
+          traderLabel: smart?.label,
+          solAmount: sol,
+          marketCapSol: mcap,
+        });
       }
       return;
     }
 
     // ---- SELL side: exit logic ----
+    // Only relevant for tokens we actually entered (i.e. we sent an ENTRY
+    // alert). No exit pings for tokens you were never told to buy.
+    if (!p.entered) return;
     const isWhaleSell = sol >= config.live.whaleSellSol;
 
     // 1) smart money selling => terminal EXIT (they're getting out)
@@ -197,15 +187,13 @@ export class Tracker extends EventEmitter {
       return this.exit(p, `🛑 Stop-loss: -${loss.toFixed(0)}% from entry — cut it.`, mcap);
     }
 
-    // 6) whale / top-holder selling => non-terminal WARNING (cooldown)
-    if ((isWhaleSell || isTop) && now - p.lastWarnAt > WARN_COOLDOWN_MS) {
+    // 6) a real whale selling => non-terminal WARNING (cooldown)
+    if (isWhaleSell && now - p.lastWarnAt > WARN_COOLDOWN_MS) {
       p.lastWarnAt = now;
       this.fire(p, {
         kind: "EXIT_WARNING",
         terminal: false,
-        reason: isTop
-          ? `⚠️ A top holder is selling (${sol.toFixed(2)} SOL) — tighten your stop / take profit.`
-          : `⚠️ Whale sell of ${sol.toFixed(2)} SOL — watch closely.`,
+        reason: `⚠️ Whale sell of ${sol.toFixed(2)} SOL — watch closely.`,
         trader,
         solAmount: sol,
         marketCapSol: mcap,
