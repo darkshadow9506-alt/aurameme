@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { config } from "./config.js";
 import { makeLogger } from "./util/logger.js";
-import { PumpPortal } from "./sources/pumpportal.js";
+import { createFeed, type TokenFeed } from "./sources/feed.js";
 import { getMintFacts, getHolderFacts } from "./sources/solanaRpc.js";
 import { getMarketFacts } from "./sources/dexscreener.js";
 import { getHolderStats, clusterEarlyBuyers } from "./sources/indexer.js";
@@ -31,7 +31,7 @@ const LAUNCH_OBSERVE_MS = 30_000;
  *   "smartHit" ({hit, mint}) — a tracked wallet traded
  */
 export class Engine extends EventEmitter {
-  readonly feed = new PumpPortal();
+  readonly feed: TokenFeed = createFeed();
   private collector = new EarlyTradeCollector();
   private pending = new Set<string>();
 

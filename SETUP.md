@@ -201,10 +201,37 @@ pm2 logs aurameme      # دیدن لاگ‌ها
 
 ---
 
+## 🆘 اگه pumpportal بلاک بود (`ETIMEDOUT` روی pumpportal.fun)
+
+اگه ربات بالا میاد ولی فقط `pumpportal` خطای `ETIMEDOUT` می‌ده (یعنی سرورِ VPNت اون رو بلاک کرده) و سرورِ VPN دیگه‌ای نداری، **منبعِ جایگزین** رو روشن کن که مستقیم از خودِ شبکه‌ی Solana می‌خونه:
+
+۱. مطمئن شو RPCت در دسترسه (ترجیحاً **Helius**):
+```powershell
+Test-NetConnection mainnet.helius-rpc.com -Port 443    # باید True باشه
+```
+۲. تو `.env` این‌ها رو بذار:
+```ini
+FEED_SOURCE=solana
+HELIUS_API_KEY=کلیدت
+SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=کلیدت
+```
+۳. دوباره `npm run dev`. حالا باید این رو ببینی:
+```
+[INFO] (feed) feed source: solana program logs (direct RPC)
+[OK] (solana-logs) connected — subscribing to pump.fun program logs
+[OK] (solana-logs) subscription active (id …)
+```
+این روش به pumpportal نیازی نداره و فقط به یه RPCِ در دسترس وصله.
+
+> **چرا Helius؟** این روش حجمِ بالایی از لاگ‌ها رو می‌گیره؛ RPC عمومی (`api.mainnet-beta`) ممکنه `403` بده یا قطع‌وصل بشه. Helius رایگانه و پایدار.
+
+---
+
 ## مشکلات رایج
 
 | مشکل | علت / راه‌حل |
 |---|---|
+| `pumpportal ETIMEDOUT` | سرورِ VPNت اون رو بلاک کرده → یا سرور VPN عوض کن، یا `FEED_SOURCE=solana` بذار (بالا👆) |
 | `HTTP 403` تو لاگ | VPN وصل نیست یا سرورش بلاکه → VPN رو وصل/عوض کن |
 | ربات تو تلگرام جواب نمی‌ده | توکن غلطه، یا VPN قطعه → `.env` و VPN رو چک کن |
 | `Telegram failed to start` | `TELEGRAM_BOT_TOKEN` اشتباهه → از BotFather دوباره بگیر |

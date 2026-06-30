@@ -30,6 +30,9 @@ export const config = {
   solanaRpcUrl: str("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
   pumpPortalWsUrl: str("PUMPPORTAL_WS_URL", "wss://pumpportal.fun/api/data"),
   dexscreenerBase: str("DEXSCREENER_BASE", "https://api.dexscreener.com"),
+  // Realtime feed: "pumpportal" (default) or "solana" (direct RPC program logs,
+  // for when pumpportal.fun is blocked from your VPN exit).
+  feedSource: str("FEED_SOURCE", "pumpportal"),
   // Optional indexers — unlock accurate holder counts & funder clustering.
   heliusApiKey: str("HELIUS_API_KEY"),
   birdeyeApiKey: str("BIRDEYE_API_KEY"),
