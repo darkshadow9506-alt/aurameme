@@ -147,6 +147,10 @@ export function startTelegram(): Bot | null {
   engine.on("alert", (al) => void pushAll(formatAlert(al)));
 
   bot.catch((err) => log.error("bot error:", err.message));
-  bot.start({ onStart: (i) => log.ok(`Telegram bot @${i.username} online`) });
+  // bot.start() long-polls; if the token is invalid it rejects — catch it so a
+  // bad token doesn't crash the whole process (engine + web keep running).
+  bot
+    .start({ onStart: (i) => log.ok(`Telegram bot @${i.username} online`) })
+    .catch((e) => log.error("Telegram failed to start (check token):", (e as Error).message));
   return bot;
 }

@@ -42,6 +42,10 @@ export const config = {
     minLiquidityUsd: num("MIN_LIQUIDITY_USD", 4000),
     topHoldersCheck: num("TOP_HOLDERS_CHECK", 20),
     smartMoneyWallets: list("SMART_MONEY_WALLETS"),
+    /** min realized profit (SOL) on a token before we auto-discover a wallet. */
+    discoveryMinProfitSol: num("DISCOVERY_MIN_PROFIT_SOL", 1),
+    /** cap on how many wallets we subscribe to (websocket budget). */
+    maxWatchedWallets: num("MAX_WATCHED_WALLETS", 300),
   },
   live: {
     /** a single buy >= this many SOL counts as a "whale" buy (entry trigger). */

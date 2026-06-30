@@ -158,12 +158,17 @@ async function getHolderStatsBirdeye(mint: string): Promise<HolderFacts | null> 
   const holderCount = ov.data?.holder ?? sec.data?.holderCount ?? null;
   if (top10 == null && holderCount == null) return null;
 
-  // Birdeye returns a fraction (0-1) for percentages.
-  const top10Pct = top10 != null ? top10 * 100 : 0;
+  // Birdeye returns a fraction (0-1) for percentages; clamp defensively so a
+  // format surprise can never produce an absurd value that skews scoring.
+  const top10Pct = top10 != null ? Math.min(100, Math.max(0, top10 * 100)) : 0;
+  const creatorPct =
+    sec.data?.creatorPercentage != null
+      ? Math.min(100, Math.max(0, sec.data.creatorPercentage * 100))
+      : 0;
   return {
     mint,
     topHolders: [],
-    topHolderPct: sec.data?.creatorPercentage != null ? sec.data.creatorPercentage * 100 : 0,
+    topHolderPct: creatorPct,
     top10Pct,
     holderCount,
     lpCurvePct: null,

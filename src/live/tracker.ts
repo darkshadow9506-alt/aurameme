@@ -12,7 +12,6 @@ interface PosState {
   name?: string;
   url?: string | null;
   openedAt: number;
-  trackMcap: number;
   entryMcap: number | null;
   peakMcap: number;
   lastMcap: number;
@@ -28,6 +27,8 @@ interface PosState {
   lastAccumAt: number;
   /** rolling (t, mcap) for sudden-dump detection */
   window: { t: number; mcap: number }[];
+  /** per-wallet SOL in/out on this token, for smart-money auto-discovery */
+  flows: Map<string, { buy: number; sell: number }>;
 }
 
 const WARN_COOLDOWN_MS = 20_000;
@@ -62,18 +63,18 @@ export class Tracker extends EventEmitter {
     if (this.positions.has(a.mint)) return;
     if (this.positions.size >= config.live.trackMaxTokens) this.evictOldest();
 
-    const mcap = a.marketFacts?.marketCapUsd ?? 0; // used only as a relative ref
-    const liveMcap = mcapSolFrom(a) ?? mcap ?? 0;
+    // All live prices come from the trade stream's `marketCapSol`. Start the
+    // peak/last at 0 so the FIRST trade seeds them in the right unit — never mix
+    // DexScreener's USD market-cap with the stream's SOL market-cap.
     this.positions.set(a.mint, {
       mint: a.mint,
       symbol: a.symbol,
       name: a.name,
       url: a.marketFacts?.url ?? null,
       openedAt: Date.now(),
-      trackMcap: liveMcap,
       entryMcap: null,
-      peakMcap: liveMcap,
-      lastMcap: liveMcap,
+      peakMcap: 0,
+      lastMcap: 0,
       topHolders: new Set((a.holderFacts?.topHolders ?? []).map((h) => h.owner)),
       stopLossPct: a.exit.stopLossPct,
       trailingStopPct: a.exit.trailingStopPct,
@@ -85,6 +86,7 @@ export class Tracker extends EventEmitter {
       lastWarnAt: 0,
       lastAccumAt: 0,
       window: [],
+      flows: new Map(),
     });
     log.debug(`tracking ${a.symbol ?? a.mint.slice(0, 8)} (${this.positions.size} live)`);
   }
@@ -111,6 +113,14 @@ export class Tracker extends EventEmitter {
     const smart = trader ? store.isSmart(trader) : undefined;
     const isTop = trader ? p.topHolders.has(trader) : false;
     const sol = ev.solAmount ?? 0;
+
+    // record SOL in/out per wallet so we can auto-discover profitable traders
+    if (trader && sol > 0) {
+      const f = p.flows.get(trader) ?? { buy: 0, sell: 0 };
+      if (ev.txType === "buy") f.buy += sol;
+      else f.sell += sol;
+      p.flows.set(trader, f);
+    }
 
     if (ev.txType === "buy") {
       const isWhaleBuy = sol >= config.live.whaleBuySol;
@@ -202,8 +212,23 @@ export class Tracker extends EventEmitter {
   private exit(p: PosState, reason: string, mcap: number, trader?: string, sol?: number) {
     p.exited = true;
     this.fire(p, { kind: "EXIT", terminal: true, reason, trader, solAmount: sol, marketCapSol: mcap });
-    this.emit("drop", p.mint);
+    this.release(p);
+  }
+
+  /** Remove a position: settle its wallet flows (for discovery), then drop it. */
+  private release(p: PosState) {
+    this.settle(p);
     this.positions.delete(p.mint);
+    this.emit("drop", p.mint);
+  }
+
+  /** Report round-trip traders on this token so the engine can learn winners. */
+  private settle(p: PosState) {
+    const roundtrips: { wallet: string; pnlSol: number }[] = [];
+    for (const [wallet, f] of p.flows) {
+      if (f.buy > 0 && f.sell > 0) roundtrips.push({ wallet, pnlSol: f.sell - f.buy });
+    }
+    if (roundtrips.length) this.emit("settled", { mint: p.mint, roundtrips });
   }
 
   private fire(p: PosState, base: Omit<Alert, "mint" | "symbol" | "name" | "at" | "url" | "changeFromEntryPct" | "changeFromPeakPct">) {
@@ -241,8 +266,7 @@ export class Tracker extends EventEmitter {
   close(mint: string) {
     const p = this.positions.get(mint);
     if (!p) return false;
-    this.positions.delete(mint);
-    this.emit("drop", mint);
+    this.release(p);
     return true;
   }
 
@@ -250,25 +274,14 @@ export class Tracker extends EventEmitter {
     const ttl = config.live.trackTtlMin * 60_000;
     const now = Date.now();
     for (const p of this.positions.values()) {
-      if (now - p.openedAt > ttl) {
-        this.positions.delete(p.mint);
-        this.emit("drop", p.mint);
-      }
+      if (now - p.openedAt > ttl) this.release(p);
     }
   }
 
   private evictOldest() {
     const oldest = [...this.positions.values()].sort((a, b) => a.openedAt - b.openedAt)[0];
-    if (oldest) {
-      this.positions.delete(oldest.mint);
-      this.emit("drop", oldest.mint);
-    }
+    if (oldest) this.release(oldest);
   }
-}
-
-/** pump.fun trade events carry marketCapSol; analyses don't, so default null. */
-function mcapSolFrom(_a: Analysis): number | null {
-  return null;
 }
 
 export const tracker = new Tracker();

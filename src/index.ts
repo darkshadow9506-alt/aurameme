@@ -8,6 +8,13 @@ import { startWeb } from "./web/server.js";
 
 const log = makeLogger("main");
 
+// Resilience: a long-running live bot must survive stray async errors (network
+// blips, a websocket hiccup, an unawaited promise) instead of dying.
+process.on("unhandledRejection", (reason) =>
+  log.error("unhandledRejection:", reason instanceof Error ? reason.message : reason),
+);
+process.on("uncaughtException", (err) => log.error("uncaughtException:", err.message));
+
 async function main() {
   log.info("AuraMeme starting…");
   log.info(

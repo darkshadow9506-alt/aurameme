@@ -10,6 +10,7 @@ import { scoreToken } from "./analysis/score.js";
 import {
   classifyWalletTrade,
   noteCreator,
+  recordRoundTrip,
 } from "./analysis/smartMoney.js";
 import { store } from "./store/store.js";
 import { tracker } from "./live/tracker.js";
@@ -51,6 +52,10 @@ export class Engine extends EventEmitter {
     // tracker tells us when to release a token; its alerts are re-emitted.
     tracker.on("drop", (mint: string) => this.feed.unwatchToken(mint));
     tracker.on("alert", (alert) => this.emit("alert", alert));
+    // tracker reports round-trip traders on closed tokens → learn the winners
+    tracker.on("settled", (s: { mint: string; roundtrips: { wallet: string; pnlSol: number }[] }) =>
+      this.onSettled(s),
+    );
     tracker.start();
 
     this.feed.start();
@@ -71,7 +76,9 @@ export class Engine extends EventEmitter {
   private async gradeLaunch(ev: PumpEvent) {
     this.pending.delete(ev.mint);
     const { facts: bundleFacts, buyers } = this.collector.finalize(ev.mint);
-    this.feed.unwatchToken(ev.mint);
+    // NOTE: the token stays subscribed here. If it's trackable we hand it to the
+    // tracker (which needs the live trade stream); only non-trackable tokens are
+    // unwatched below, so we don't kill the entry/exit feed.
     try {
       // deep bundle detection: do many early buyers share one SOL funder?
       const cluster = await clusterEarlyBuyers(buyers);
@@ -154,9 +161,9 @@ export class Engine extends EventEmitter {
     log.info(`smart-money ${hit.action.toUpperCase()} by ${hit.label} on ${ev.mint.slice(0, 8)}`);
     this.emit("smartHit", { hit, mint: ev.mint, event: ev });
 
-    // Make sure we're following this token's stream so entry/exit fire live,
-    // then let the tracker turn the smart-money trade into an alert.
-    if (!tracker.isTracking(ev.mint)) this.feed.watchToken(ev.mint);
+    // Make sure we're following this token's stream so entry/exit fire live.
+    const wasTracking = tracker.isTracking(ev.mint);
+    if (!wasTracking) this.feed.watchToken(ev.mint);
 
     // Re-grade the token now that smart money touched it, so the signal carries
     // the smart-money context.
@@ -171,8 +178,31 @@ export class Engine extends EventEmitter {
     } catch {
       /* ignore re-grade errors */
     }
-    // feed the trade to the tracker so a smart buy/sell becomes an entry/exit
-    tracker.onTrade(ev);
+    // Deliver THIS trade to the tracker only on first touch. Once the token is
+    // tracked it's also subscribed, so the "trade" stream delivers every
+    // subsequent trade — avoid double-processing the same event.
+    if (!wasTracking) tracker.onTrade(ev);
+  }
+
+  /**
+   * Learn smart-money wallets automatically: a wallet that round-tripped a
+   * tracked token (bought AND sold) for a real profit gets promoted into the
+   * watch table and subscribed, so its FUTURE buys become entry signals. The
+   * token's creator is never promoted (handled inside recordRoundTrip).
+   */
+  private onSettled(s: { mint: string; roundtrips: { wallet: string; pnlSol: number }[] }) {
+    for (const r of s.roundtrips) {
+      const already = store.isSmart(r.wallet);
+      if (already) {
+        recordRoundTrip(r.wallet, s.mint, r.pnlSol); // keep its W/L record current
+      } else if (r.pnlSol >= config.engine.discoveryMinProfitSol) {
+        recordRoundTrip(r.wallet, s.mint, r.pnlSol); // promote a real winner
+        if (store.isSmart(r.wallet) && store.allSmart().length <= config.engine.maxWatchedWallets) {
+          this.feed.watchWallet(r.wallet);
+          log.ok(`discovered smart wallet ${r.wallet.slice(0, 6)}… (+${r.pnlSol.toFixed(2)} SOL)`);
+        }
+      }
+    }
   }
 
   // ---- watchlist management used by Telegram commands ----

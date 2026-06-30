@@ -37,7 +37,10 @@ export function startWeb() {
 
   app.get("/api/positions", (_req, res) => res.json(tracker.positionsDTO()));
 
+  const SOL_ADDR = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
   app.get("/api/token/:mint", async (req, res) => {
+    if (!SOL_ADDR.test(req.params.mint))
+      return res.status(400).json({ error: "invalid mint address" });
     try {
       const existing = store.getAnalysis(req.params.mint);
       if (existing) return res.json(existing);
@@ -55,15 +58,33 @@ export function startWeb() {
       "content-type": "text/event-stream",
       "cache-control": "no-cache",
       connection: "keep-alive",
+      "x-accel-buffering": "no", // don't let a reverse proxy buffer the stream
     });
     res.write(": connected\n\n");
     clients.add(res);
     req.on("close", () => clients.delete(res));
   });
 
+  // heartbeat so idle SSE connections aren't dropped by proxies
+  setInterval(() => {
+    for (const c of clients) {
+      try {
+        c.write(": ping\n\n");
+      } catch {
+        clients.delete(c);
+      }
+    }
+  }, 25_000).unref();
+
   const broadcast = (event: string, data: unknown) => {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const c of clients) c.write(payload);
+    for (const c of clients) {
+      try {
+        c.write(payload);
+      } catch {
+        clients.delete(c);
+      }
+    }
   };
   engine.on("analysis", (a) => broadcast("analysis", a));
   engine.on("signal", (a) => broadcast("signal", a));

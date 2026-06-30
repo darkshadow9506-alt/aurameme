@@ -21,29 +21,6 @@ async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   return json.result as T;
 }
 
-// ----- base58 (decode only, for reading 32-byte pubkeys back to strings) -----
-const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-function bytesToBase58(bytes: Uint8Array): string {
-  let zeros = 0;
-  while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
-  const digits: number[] = [];
-  for (let i = zeros; i < bytes.length; i++) {
-    let carry = bytes[i];
-    for (let j = 0; j < digits.length; j++) {
-      carry += digits[j] << 8;
-      digits[j] = carry % 58;
-      carry = (carry / 58) | 0;
-    }
-    while (carry > 0) {
-      digits.push(carry % 58);
-      carry = (carry / 58) | 0;
-    }
-  }
-  let out = "1".repeat(zeros);
-  for (let i = digits.length - 1; i >= 0; i--) out += B58[digits[i]];
-  return out;
-}
-
 /**
  * SPL Mint account layout (82 bytes):
  *   0..4   mintAuthorityOption (u32 LE)  — 0 means "None" => renounced
@@ -153,16 +130,3 @@ export async function getAccountOwners(
   return out;
 }
 
-/** Resolve the on-chain owner of a token account (used for clustering). */
-export async function getTokenAccountOwner(addr: string): Promise<string | null> {
-  try {
-    const res = await rpc<{
-      value: { data: { parsed?: { info?: { owner?: string } } } } | null;
-    }>("getAccountInfo", [addr, { encoding: "jsonParsed" }]);
-    return res?.value?.data?.parsed?.info?.owner ?? null;
-  } catch {
-    return null;
-  }
-}
-
-export const _internals = { bytesToBase58 };
