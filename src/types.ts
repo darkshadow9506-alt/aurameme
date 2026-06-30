@@ -113,6 +113,44 @@ export interface EntryPlan {
   notes: string[];
 }
 
+// ---- live position tracking & alerts ----
+export type AlertKind = "ENTRY" | "ACCUMULATION" | "EXIT" | "EXIT_WARNING";
+
+export interface Alert {
+  kind: AlertKind;
+  mint: string;
+  symbol?: string;
+  name?: string;
+  reason: string;
+  at: number;
+  /** terminal => the position is considered closed (sell everything) */
+  terminal: boolean;
+  marketCapSol?: number;
+  changeFromEntryPct?: number | null;
+  changeFromPeakPct?: number | null;
+  trader?: string;
+  traderLabel?: string;
+  solAmount?: number;
+  url?: string | null;
+}
+
+/** Serializable snapshot of a tracked position (for the API/dashboard). */
+export interface PositionDTO {
+  mint: string;
+  symbol?: string;
+  name?: string;
+  openedAt: number;
+  entered: boolean;
+  exited: boolean;
+  entryMcapSol: number | null;
+  peakMcapSol: number;
+  lastMcapSol: number;
+  changeFromEntryPct: number | null;
+  changeFromPeakPct: number;
+  topHolderCount: number;
+  exitReason?: string;
+}
+
 export interface Analysis {
   mint: string;
   name?: string;

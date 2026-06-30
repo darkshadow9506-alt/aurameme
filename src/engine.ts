@@ -12,6 +12,7 @@ import {
   noteCreator,
 } from "./analysis/smartMoney.js";
 import { store } from "./store/store.js";
+import { tracker } from "./live/tracker.js";
 import type { Analysis, PumpEvent, SmartMoneyHit } from "./types.js";
 
 const log = makeLogger("engine");
@@ -41,8 +42,17 @@ export class Engine extends EventEmitter {
     }
 
     this.feed.on("newToken", (ev: PumpEvent) => this.onNewToken(ev));
-    this.feed.on("trade", (ev: PumpEvent) => this.collector.push(ev));
+    this.feed.on("trade", (ev: PumpEvent) => {
+      this.collector.push(ev);
+      tracker.onTrade(ev);
+    });
     this.feed.on("walletTrade", (ev: PumpEvent) => this.onWalletTrade(ev));
+
+    // tracker tells us when to release a token; its alerts are re-emitted.
+    tracker.on("drop", (mint: string) => this.feed.unwatchToken(mint));
+    tracker.on("alert", (alert) => this.emit("alert", alert));
+    tracker.start();
+
     this.feed.start();
     log.ok("engine started — listening for new pump.fun tokens");
   }
@@ -75,8 +85,17 @@ export class Engine extends EventEmitter {
         bundleFacts,
       });
       this.publish(analysis);
+
+      // Keep watching promising tokens live so we can catch whale entries and
+      // dump exits; drop the rest to save the websocket budget.
+      if (isTrackable(analysis)) {
+        tracker.open(analysis);
+      } else {
+        this.feed.unwatchToken(ev.mint);
+      }
     } catch (e) {
       log.warn(`grade failed ${ev.mint.slice(0, 8)}:`, (e as Error).message);
+      this.feed.unwatchToken(ev.mint);
     }
   }
 
@@ -135,6 +154,10 @@ export class Engine extends EventEmitter {
     log.info(`smart-money ${hit.action.toUpperCase()} by ${hit.label} on ${ev.mint.slice(0, 8)}`);
     this.emit("smartHit", { hit, mint: ev.mint, event: ev });
 
+    // Make sure we're following this token's stream so entry/exit fire live,
+    // then let the tracker turn the smart-money trade into an alert.
+    if (!tracker.isTracking(ev.mint)) this.feed.watchToken(ev.mint);
+
     // Re-grade the token now that smart money touched it, so the signal carries
     // the smart-money context.
     try {
@@ -144,9 +167,12 @@ export class Engine extends EventEmitter {
         smartMoney: [hit],
       });
       this.publish(a);
+      if (isTrackable(a)) tracker.open(a);
     } catch {
       /* ignore re-grade errors */
     }
+    // feed the trade to the tracker so a smart buy/sell becomes an entry/exit
+    tracker.onTrade(ev);
   }
 
   // ---- watchlist management used by Telegram commands ----
@@ -158,6 +184,14 @@ export class Engine extends EventEmitter {
     this.feed.unwatchWallet(wallet);
     return store.removeSmart(wallet);
   }
+}
+
+/** Worth following live? Track WATCH+ tokens (or anything smart money touched). */
+function isTrackable(a: Analysis): boolean {
+  if (a.verdict === "AVOID" || a.verdict === "RISKY") {
+    return a.smartMoney.length > 0; // still follow if smart money is involved
+  }
+  return true;
 }
 
 export const engine = new Engine();

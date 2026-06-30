@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { makeLogger } from "../util/logger.js";
 import { engine } from "../engine.js";
 import { store } from "../store/store.js";
+import { tracker } from "../live/tracker.js";
 
 const log = makeLogger("web");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -33,6 +34,8 @@ export function startWeb() {
   });
 
   app.get("/api/wallets", (_req, res) => res.json(store.allSmart()));
+
+  app.get("/api/positions", (_req, res) => res.json(tracker.positionsDTO()));
 
   app.get("/api/token/:mint", async (req, res) => {
     try {
@@ -64,6 +67,7 @@ export function startWeb() {
   };
   engine.on("analysis", (a) => broadcast("analysis", a));
   engine.on("signal", (a) => broadcast("signal", a));
+  engine.on("alert", (al) => broadcast("alert", al));
 
   app.listen(config.web.port, config.web.host, () =>
     log.ok(`dashboard at http://${config.web.host}:${config.web.port}`),

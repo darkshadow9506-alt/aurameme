@@ -40,6 +40,18 @@ export const config = {
     topHoldersCheck: num("TOP_HOLDERS_CHECK", 20),
     smartMoneyWallets: list("SMART_MONEY_WALLETS"),
   },
+  live: {
+    /** a single buy >= this many SOL counts as a "whale" buy (entry trigger). */
+    whaleBuySol: num("WHALE_BUY_SOL", 2),
+    /** a single sell >= this many SOL counts as a "whale" dump (exit trigger). */
+    whaleSellSol: num("WHALE_SELL_SOL", 2),
+    /** max tokens tracked live at once (websocket budget). */
+    trackMaxTokens: num("TRACK_MAX_TOKENS", 150),
+    /** stop tracking a token after this many minutes of life. */
+    trackTtlMin: num("TRACK_TTL_MIN", 45),
+    /** sudden market-cap drop (%) within the dump window => EXIT. */
+    exitDumpPct: num("EXIT_DUMP_PCT", 25),
+  },
   dryRun: str("DRY_RUN", "1") !== "0",
 } as const;
 

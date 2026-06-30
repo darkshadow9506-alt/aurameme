@@ -1,4 +1,4 @@
-import type { Analysis } from "../types.js";
+import type { Alert, Analysis } from "../types.js";
 import { usd, pct, shortAddr } from "../util/format.js";
 
 const VERDICT_EMOJI: Record<Analysis["verdict"], string> = {
@@ -87,6 +87,38 @@ export function formatSignal(a: Analysis): string {
   lines.push("");
   lines.push("<i>Not financial advice. Memecoins are extreme risk — only money you can lose.</i>");
 
+  return lines.join("\n");
+}
+
+const ALERT_EMOJI: Record<Alert["kind"], string> = {
+  ENTRY: "🟢🐳",
+  ACCUMULATION: "➕",
+  EXIT: "🔴🚨",
+  EXIT_WARNING: "⚠️",
+};
+
+/** Compact, push-friendly live alert message. */
+export function formatAlert(al: Alert): string {
+  const head =
+    al.kind === "ENTRY"
+      ? "ENTRY — buy signal"
+      : al.kind === "EXIT"
+        ? "EXIT — sell now"
+        : al.kind === "ACCUMULATION"
+          ? "Accumulation"
+          : "Exit warning";
+  const lines: string[] = [];
+  lines.push(`${ALERT_EMOJI[al.kind]} <b>${esc(head)}</b>`);
+  lines.push(`<b>${esc(al.name ?? al.symbol ?? "token")}</b>${al.symbol ? ` $${esc(al.symbol)}` : ""}`);
+  lines.push(esc(al.reason));
+  const bits: string[] = [];
+  if (al.changeFromEntryPct != null) bits.push(`from entry ${pct(al.changeFromEntryPct)}`);
+  if (al.changeFromPeakPct != null && al.changeFromPeakPct < 0)
+    bits.push(`from peak ${pct(al.changeFromPeakPct)}`);
+  if (bits.length) lines.push(bits.join("  •  "));
+  lines.push(`<code>${al.mint}</code>`);
+  const links = [`<a href="https://jup.ag/swap/SOL-${al.mint}">Trade · Jupiter</a>`, `<a href="https://pump.fun/${al.mint}">pump.fun</a>`];
+  lines.push(links.join("  •  "));
   return lines.join("\n");
 }
 

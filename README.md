@@ -46,6 +46,14 @@
 - وقتی یکی‌شون می‌خره → سیگنال قوی. وقتی می‌فروشه → **هشدار خروج**.
 - کیف‌پول **سازنده‌ی توکن** هیچ‌وقت به‌عنوان smart money برچسب نمی‌خوره (تفکیک تریدر واقعی از کلاهبردار سازنده).
 
+### ۲.۵) آلارم زنده‌ی ورود/خروج — `src/live/tracker.ts` ⭐
+این همون چیزیه که خواستی: ربات توکن‌های امیدوارکننده رو **زنده** دنبال می‌کنه (از استریم ترید pump.fun، بدون مصرف سهمیه‌ی API) و:
+- 🟢 **ورود (ENTRY)**: لحظه‌ای که یه **نهنگ** (خرید ≥ ۲ SOL) یا یه کیف‌پول **smart money** اون توکن رو می‌خره → آلارم «ورود» فوری.
+- 🔴 **خروج (EXIT)**: لحظه‌ای که **هولدرهای بزرگ/اصلی یا smart money شروع به فروش می‌کنن**، یا **دامپ ناگهانی** اتفاق می‌افته، یا تریلینگ‌استاپ/استاپ‌لاس می‌خوره → آلارم «خروج فوری».
+- ⚠️ **هشدار**: فروش نهنگ/هولدر بزرگ به‌صورت غیرترمینال (با cooldown) که استاپت رو تنگ‌تر کنی.
+
+آستانه‌ها در `.env` قابل تنظیم‌اند (`WHALE_BUY_SOL`, `WHALE_SELL_SOL`, `EXIT_DUMP_PCT`).
+
 ### ۳) موتور امتیازدهی و سیگنال — `src/analysis/score.ts` + `src/signals/strategy.ts`
 - امتیاز ۰ تا ۱۰۰ + verdict: `AVOID / RISKY / WATCH / SIGNAL / STRONG_SIGNAL`.
 - نقطه ورود + سایز پیشنهادی پوزیشن.
@@ -106,6 +114,7 @@ npm run scan -- <mint-address>
 /check <mint>          آنالیز کامل امنیت + فرصت یک توکن
 /recent                آخرین توکن‌های آنالیزشده
 /signals               سیگنال‌هایی که از آستانه رد شدن
+/positions             توکن‌هایی که زنده برای ورود/خروج دنبال می‌شن
 /wallets               لیست کیف‌پول‌های smart money
 /addwallet <addr> [نام]  ردگیری یک تریدر برنده
 /delwallet <addr>      حذف یک کیف‌پول
@@ -114,14 +123,40 @@ npm run scan -- <mint-address>
 
 ---
 
+## بک‌تست — `src/backtest/`
+
+می‌خوای ببینی استراتژیِ ورود/خروج روی داده‌ی گذشته چه‌جوری عمل می‌کنه؟
+
+```bash
+npm run backtest                 # دیتاست نمونه (همین الان اجرا می‌شه)
+npm run backtest -- data.json    # تاریخچه‌ی واقعی خودت (فرمت BtToken[])
+npm run backtest -- --count 500  # اجرای بزرگ‌تر
+```
+
+بک‌تست هر توکن رو از **همون موتور ورود/خروج زنده** عبور می‌ده (پلکان سود + تریلینگ + استاپ + تریگرهای ضدِ دامپ/rug) و نتیجه رو با buy-and-hold ساده مقایسه می‌کنه. نمونه‌ی خروجی روی دیتاست نمونه:
+
+```
+Win rate          : 58.3%  (116W / 83L)
+Avg result        : 1.73x   (buy&hold: 1.22x)
+Total PnL (risked): +144.6R   (buy&hold: +43.9R)
+   rug-saved (>0.5x)  ████████████  31   ← تریگرهای خروج، سرمایه رو از rugها نجات دادن
+```
+
+**ارزش استراتژی** اینه: با برداشتِ زودِ سود و خروج روی تریگرِ فروشِ smart money/rug، خیلی از rugها به‌جای ضرر کامل، به «نجات نسبی» تبدیل می‌شن. دیتاست نمونه مصنوعیه (برای نمایش)؛ برای عدد واقعی، تاریخچه‌ی واقعی پاس بده. **نتیجه‌ی گذشته تضمینِ آینده نیست.**
+
+> فرمت دیتاست واقعی: آرایه‌ای از `{ mint, name, verdict?, series:[{mcap}], events?:[{at,type}], entryIndex? }`. می‌تونی از همون داده‌ای که ربات زنده ضبط می‌کنه بسازیش.
+
+---
+
 ## معماری
 
 ```
-PumpPortal (وب‌سوکت لحظه‌ای) ─┐
-DexScreener (داده‌ی بازار)   ─┤
-Solana RPC (mint/holders)   ─┼─▶ Engine ─▶ Score ─▶ Strategy ─┬─▶ Telegram
-Indexer (Helius: holders,   ─┘     (orchestrator)              ├─▶ Web Dashboard (SSE)
-   funder-cluster, Birdeye)                                    └─▶ Store (JSON)
+PumpPortal (وب‌سوکت لحظه‌ای) ─┐                          ┌─▶ Telegram (سیگنال + آلارم زنده)
+DexScreener (داده‌ی بازار)   ─┤                          │
+Solana RPC (mint/holders)   ─┼─▶ Engine ─▶ Score ─▶ Strategy ─┼─▶ Tracker (ورود/خروج زنده)
+Indexer (Helius: holders,   ─┘   (orchestrator)            ├─▶ Web Dashboard (SSE)
+   funder-cluster, Birdeye)                                └─▶ Store (JSON)
+                                       Backtest ◀── همون Strategy
 ```
 
 | پوشه | کارش |
@@ -129,6 +164,8 @@ Indexer (Helius: holders,   ─┘     (orchestrator)              ├─▶ Web
 | `src/sources/` | منابع داده: `pumpportal` (لحظه‌ای)، `dexscreener` (بازار)، `solanaRpc` (آن‌چین)، `indexer` (Helius/Birdeye) |
 | `src/analysis/` | `score` (امتیاز/verdict)، `bundle` (اینسایدر)، `smartMoney` (ردگیری کیف‌پول) |
 | `src/signals/` | `strategy` (ورود/خروج/استاپ) |
+| `src/live/` | `tracker` — آلارم زنده‌ی ورود نهنگ / خروج دامپ |
+| `src/backtest/` | شبیه‌ساز استراتژی + دیتاست نمونه + CLI |
 | `src/telegram/` | بات و فرمت پیام |
 | `src/web/` | سرور Express + داشبورد |
 | `src/engine.ts` | ارکستریتور که همه‌چیز رو وصل می‌کنه |

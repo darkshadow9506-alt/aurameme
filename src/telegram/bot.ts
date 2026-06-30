@@ -3,7 +3,8 @@ import { config } from "../config.js";
 import { makeLogger } from "../util/logger.js";
 import { engine } from "../engine.js";
 import { store } from "../store/store.js";
-import { formatSignal, formatShort } from "./format.js";
+import { tracker } from "../live/tracker.js";
+import { formatSignal, formatShort, formatAlert } from "./format.js";
 
 const log = makeLogger("telegram");
 
@@ -31,6 +32,7 @@ export function startTelegram(): Bot | null {
         "/check &lt;mint&gt; — full safety + opportunity analysis of a token",
         "/recent — last graded tokens",
         "/signals — recent tokens that passed the signal threshold",
+        "/positions — tokens being tracked live for entry/exit",
         "/wallets — your smart-money watch list",
         "/addwallet &lt;addr&gt; [label] — track a winning trader wallet",
         "/delwallet &lt;addr&gt; — stop tracking a wallet",
@@ -85,6 +87,21 @@ export function startTelegram(): Bot | null {
     return ctx.reply(list.map(formatShort).join("\n"));
   });
 
+  bot.command("positions", (ctx) => {
+    const list = tracker.positionsDTO();
+    if (!list.length) return ctx.reply("No live positions yet — they open as tokens get tracked.");
+    return ctx.reply(
+      list
+        .slice(0, 25)
+        .map((p) => {
+          const tag = p.entered ? "🟢in" : "👀watch";
+          const chg = p.changeFromEntryPct != null ? ` ${p.changeFromEntryPct >= 0 ? "+" : ""}${p.changeFromEntryPct.toFixed(0)}%` : "";
+          return `${tag} ${p.symbol ?? p.mint.slice(0, 8)}${chg} (peak ${p.peakMcapSol.toFixed(0)} SOL mc)`;
+        })
+        .join("\n"),
+    );
+  });
+
   bot.command("wallets", (ctx) => {
     const list = store.allSmart().slice(0, 25);
     if (!list.length) return ctx.reply("No smart-money wallets tracked. Add with /addwallet <addr>.");
@@ -112,10 +129,10 @@ export function startTelegram(): Bot | null {
   });
 
   // ---- push signals to subscribers ----
-  engine.on("signal", async (a) => {
+  const pushAll = async (text: string) => {
     for (const id of config.telegram.chatIds) {
       try {
-        await bot.api.sendMessage(id, formatSignal(a), {
+        await bot.api.sendMessage(id, text, {
           parse_mode: "HTML",
           link_preview_options: { is_disabled: true },
         });
@@ -123,7 +140,11 @@ export function startTelegram(): Bot | null {
         log.warn(`push to ${id} failed:`, (e as Error).message);
       }
     }
-  });
+  };
+
+  engine.on("signal", (a) => void pushAll(formatSignal(a)));
+  // live entry/exit alerts — the core "buy when whales buy / sell when they dump"
+  engine.on("alert", (al) => void pushAll(formatAlert(al)));
 
   bot.catch((err) => log.error("bot error:", err.message));
   bot.start({ onStart: (i) => log.ok(`Telegram bot @${i.username} online`) });

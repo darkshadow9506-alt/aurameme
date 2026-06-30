@@ -76,9 +76,15 @@
     </table>
   </div>
 
-  <div class="card">
-    <h2>Detail</h2>
-    <div id="detail" class="detail"><div class="empty">Select a token to see the full analysis & plan.</div></div>
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="card">
+      <h2>🔔 Live alerts — entries & exits</h2>
+      <div id="alerts" class="detail"><div class="empty">Whale-buy entries and dump exits show up here in real time.</div></div>
+    </div>
+    <div class="card">
+      <h2>Detail</h2>
+      <div id="detail" class="detail"><div class="empty">Select a token to see the full analysis & plan.</div></div>
+    </div>
   </div>
 </div>
 
@@ -165,6 +171,19 @@ async function load(){
   render();
 }
 
+const alerts=[];
+function onAlert(e){
+  const al=JSON.parse(e.data);
+  alerts.unshift(al);
+  if(alerts.length>40) alerts.pop();
+  document.getElementById('alerts').innerHTML = alerts.map(a=>{
+    const c = a.kind==='ENTRY'||a.kind==='ACCUMULATION'?'green':'red';
+    const tg = a.kind==='ENTRY'?'🟢 ENTRY':a.kind==='EXIT'?'🔴 EXIT':a.kind==='ACCUMULATION'?'➕ ADD':'⚠️ WARN';
+    const chg = a.changeFromEntryPct!=null?` (${fmtPct(a.changeFromEntryPct)})`:'';
+    return `<div class="flag ${c}"><b>${tg}</b> ${esc(a.symbol||a.name||a.mint.slice(0,8))}${chg}<br>${esc(a.reason)} · <a href="https://jup.ag/swap/SOL-${a.mint}" target="_blank">trade</a> <span class="mut">${new Date(a.at).toLocaleTimeString()}</span></div>`;
+  }).join('');
+}
+
 function connect(){
   const es=new EventSource('/api/stream');
   es.onopen=()=>document.getElementById('liveDot').classList.add('live');
@@ -172,6 +191,7 @@ function connect(){
   const onMsg=e=>{ if(!document.getElementById('auto').checked) return; const a=JSON.parse(e.data); data.set(a.mint,a); render(); };
   es.addEventListener('analysis',onMsg);
   es.addEventListener('signal',onMsg);
+  es.addEventListener('alert',onAlert);
 }
 
 load(); connect();
