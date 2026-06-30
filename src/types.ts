@@ -145,6 +145,9 @@ export interface Alert {
   traderLabel?: string;
   solAmount?: number;
   url?: string | null;
+  /** the token's safety grade, so an entry alert shows the risk too */
+  verdict?: Verdict;
+  score?: number;
 }
 
 /** Serializable snapshot of a tracked position (for the API/dashboard). */

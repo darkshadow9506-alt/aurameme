@@ -110,6 +110,8 @@ export function formatAlert(al: Alert): string {
   const lines: string[] = [];
   lines.push(`${ALERT_EMOJI[al.kind]} <b>${esc(head)}</b>`);
   lines.push(`<b>${esc(al.name ?? al.symbol ?? "token")}</b>${al.symbol ? ` $${esc(al.symbol)}` : ""}`);
+  if (al.verdict)
+    lines.push(`Safety grade: <b>${al.verdict.replace("_", " ")}</b> (${al.score ?? "—"}/100)`);
   lines.push(esc(al.reason));
   const bits: string[] = [];
   if (al.changeFromEntryPct != null) bits.push(`from entry ${pct(al.changeFromEntryPct)}`);

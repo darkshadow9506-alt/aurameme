@@ -253,12 +253,22 @@ export class Engine extends EventEmitter {
   }
 }
 
-/** Worth following live? Track WATCH+ tokens (or anything smart money touched). */
+/**
+ * Worth following live? We track on real early *traction*, not just the static
+ * grade — the whole point is to be watching when a whale buys. A fresh token is
+ * naturally concentrated (few holders yet), which tanks its grade, but that's
+ * exactly the kind of token we want to watch for a whale entry. The one thing
+ * we refuse to follow is a honeypot (freeze authority live = you can't sell).
+ */
 function isTrackable(a: Analysis): boolean {
-  if (a.verdict === "AVOID" || a.verdict === "RISKY") {
-    return a.smartMoney.length > 0; // still follow if smart money is involved
-  }
-  return true;
+  // never follow a token you might not be able to sell
+  if (a.mintFacts && !a.mintFacts.freezeAuthorityRenounced) return false;
+  // smart money already in, or a genuinely good grade → follow
+  if (a.smartMoney.length > 0) return true;
+  if (a.verdict !== "AVOID" && a.verdict !== "RISKY") return true;
+  // otherwise follow anything with real early traction (catch the whale entry)
+  const bf = a.bundleFacts;
+  return Boolean(bf && (bf.earlyBuyerCount ?? 0) >= 4 && (bf.earlySolVolume ?? 0) >= 2);
 }
 
 export const engine = new Engine();

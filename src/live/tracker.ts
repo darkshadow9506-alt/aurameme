@@ -11,6 +11,8 @@ interface PosState {
   symbol?: string;
   name?: string;
   url?: string | null;
+  verdict: Analysis["verdict"];
+  score: number;
   openedAt: number;
   entryMcap: number | null;
   peakMcap: number;
@@ -71,6 +73,8 @@ export class Tracker extends EventEmitter {
       symbol: a.symbol,
       name: a.name,
       url: a.marketFacts?.url ?? null,
+      verdict: a.verdict,
+      score: a.score,
       openedAt: Date.now(),
       entryMcap: null,
       peakMcap: 0,
@@ -239,6 +243,8 @@ export class Tracker extends EventEmitter {
       symbol: p.symbol,
       name: p.name,
       url: p.url,
+      verdict: p.verdict,
+      score: p.score,
       at: Date.now(),
       changeFromEntryPct: p.entryMcap ? ((mcap - p.entryMcap) / p.entryMcap) * 100 : null,
       changeFromPeakPct: p.peakMcap ? ((mcap - p.peakMcap) / p.peakMcap) * 100 : 0,
