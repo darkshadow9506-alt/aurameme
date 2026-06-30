@@ -1,4 +1,5 @@
 import type { Alert, Analysis } from "../types.js";
+import type { UserPosition } from "../store/store.js";
 import { usd, pct, shortAddr } from "../util/format.js";
 
 const VERDICT_EMOJI: Record<Analysis["verdict"], string> = {
@@ -121,6 +122,55 @@ export function formatAlert(al: Alert): string {
   lines.push(`<code>${al.mint}</code>`);
   const links = [`<a href="https://jup.ag/swap/SOL-${al.mint}">Trade · Jupiter</a>`, `<a href="https://pump.fun/${al.mint}">pump.fun</a>`];
   lines.push(links.join("  •  "));
+  return lines.join("\n");
+}
+
+/**
+ * Personalized, precise sell plan once a user taps "I'm in". Everything is in
+ * multiples of THEIR entry (what they watch as P&L %), plus absolute SOL market
+ * caps when we know their entry, so it's unambiguous where to sell.
+ */
+export function formatExitPlan(pos: UserPosition, currentMcapSol?: number | null): string {
+  const e = pos.entryMcapSol;
+  const lines: string[] = [];
+  lines.push(`📋 <b>Your sell plan — ${esc(pos.name ?? pos.symbol ?? "token")}</b>`);
+  if (e > 0) lines.push(`Entry market cap: <b>${e.toFixed(1)} SOL</b>`);
+  if (currentMcapSol && e > 0) {
+    const x = currentMcapSol / e;
+    lines.push(`Now: ${currentMcapSol.toFixed(1)} SOL (${pct((x - 1) * 100)})`);
+  }
+  lines.push("");
+  lines.push("🎯 <b>Take profit — sell in pieces:</b>");
+  for (const t of pos.takeProfits) {
+    const at = e > 0 ? ` (≈ ${(e * t.multiple).toFixed(0)} SOL mc)` : "";
+    const plusPct = `+${Math.round((t.multiple - 1) * 100)}%`;
+    lines.push(`• at <b>${t.multiple}x</b> (${plusPct})${at} → sell <b>${t.sellPct}%</b>`);
+  }
+  lines.push("• keep the rest as a moonbag on the trailing stop");
+  lines.push("");
+  lines.push("🛡️ <b>Protect:</b>");
+  lines.push(`• Stop-loss: <b>-${pos.stopLossPct}%</b>${e > 0 ? ` (≈ ${(e * (1 - pos.stopLossPct / 100)).toFixed(0)} SOL mc)` : ""}`);
+  lines.push(`• After the first take-profit, move your stop to <b>break-even</b> (your entry) — then it can't become a loss.`);
+  lines.push(`• Trailing stop: once in profit, exit if it drops <b>${pos.trailingStopPct}%</b> from its peak.`);
+  lines.push("");
+  lines.push("🔔 I'll ping you here the moment a dump, a smart-money exit, or your stop triggers.");
+  lines.push("");
+  lines.push(`<a href="https://jup.ag/swap/${pos.mint}-SOL">Sell on Jupiter</a>  •  <a href="https://pump.fun/${pos.mint}">pump.fun</a>`);
+  lines.push("<i>Not financial advice. Take profits — nobody went broke booking gains.</i>");
+  return lines.join("\n");
+}
+
+/** Personalized EXIT ping for a user who is in this position. */
+export function formatUserExit(pos: UserPosition, al: Alert, currentMcapSol?: number | null): string {
+  const e = pos.entryMcapSol;
+  const lines: string[] = [];
+  lines.push(`🔴🚨 <b>EXIT — ${esc(pos.name ?? pos.symbol ?? "token")}</b>`);
+  if (currentMcapSol && e > 0) {
+    const x = currentMcapSol / e;
+    lines.push(`Your P&L: <b>${pct((x - 1) * 100)}</b> (entry ${e.toFixed(1)} → ${currentMcapSol.toFixed(1)} SOL mc)`);
+  }
+  lines.push(esc(al.reason));
+  lines.push(`<a href="https://jup.ag/swap/${pos.mint}-SOL">Sell on Jupiter now</a>`);
   return lines.join("\n");
 }
 

@@ -99,6 +99,11 @@ export class Tracker extends EventEmitter {
     return this.positions.has(mint);
   }
 
+  /** current live market cap (SOL) of a tracked token, for entry references */
+  liveMcapOf(mint: string): number | null {
+    return this.positions.get(mint)?.lastMcap ?? null;
+  }
+
   /** Feed a realtime trade for a tracked token. */
   onTrade(ev: PumpEvent) {
     const p = this.positions.get(ev.mint);
@@ -126,11 +131,12 @@ export class Tracker extends EventEmitter {
     }
 
     if (ev.txType === "buy") {
-      // ENTRY only on a REAL whale buy or a tracked smart-money wallet — never
-      // on tiny buys or just "a top holder", which flooded the feed with noise.
-      // One ENTRY per token (entryAlerted), so no accumulation spam either.
+      // ENTRY = the best setups only: a tracked smart-money wallet buying, OR a
+      // real whale buying a token that PASSED safety (not AVOID). No tiny buys,
+      // no top-holder pings, no accumulation spam, one ENTRY per token.
       const isWhaleBuy = sol >= config.live.whaleBuySol;
-      if ((smart || isWhaleBuy) && !p.entryAlerted) {
+      const qualifies = smart || (isWhaleBuy && p.verdict !== "AVOID");
+      if (qualifies && !p.entryAlerted) {
         p.entered = true;
         p.entryAlerted = true;
         p.entryMcap = mcap;

@@ -1,10 +1,12 @@
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 import { config } from "../config.js";
 import { makeLogger } from "../util/logger.js";
 import { engine } from "../engine.js";
 import { store } from "../store/store.js";
 import { tracker } from "../live/tracker.js";
-import { formatSignal, formatShort, formatAlert } from "./format.js";
+import { activeProfile } from "../signals/profiles.js";
+import { formatSignal, formatShort, formatAlert, formatExitPlan, formatUserExit } from "./format.js";
+import type { Analysis, Alert } from "../types.js";
 
 const log = makeLogger("telegram");
 
@@ -33,6 +35,7 @@ export function startTelegram(): Bot | null {
         "/recent — last graded tokens",
         "/signals — recent tokens that passed the signal threshold",
         "/positions — tokens being tracked live for entry/exit",
+        "/mypos — positions you tapped “I'm in” on (with your sell plan)",
         "/wallets — your smart-money watch list",
         "/addwallet &lt;addr&gt; [label] — track a winning trader wallet",
         "/delwallet &lt;addr&gt; — stop tracking a wallet",
@@ -128,13 +131,14 @@ export function startTelegram(): Bot | null {
     return ctx.reply(engine.removeSmartWallet(addr) ? "Removed ✅" : "Not found.");
   });
 
-  // ---- push signals to subscribers ----
-  const pushAll = async (text: string) => {
+  // ---- push to subscribers (optionally with an inline keyboard) ----
+  const pushAll = async (text: string, keyboard?: InlineKeyboard) => {
     for (const id of config.telegram.chatIds) {
       try {
         await bot.api.sendMessage(id, text, {
           parse_mode: "HTML",
           link_preview_options: { is_disabled: true },
+          reply_markup: keyboard,
         });
       } catch (e) {
         log.warn(`push to ${id} failed:`, (e as Error).message);
@@ -142,9 +146,87 @@ export function startTelegram(): Bot | null {
     }
   };
 
-  engine.on("signal", (a) => void pushAll(formatSignal(a)));
-  // live entry/exit alerts — the core "buy when whales buy / sell when they dump"
-  engine.on("alert", (al) => void pushAll(formatAlert(al)));
+  const imInButton = (mint: string) =>
+    new InlineKeyboard().text("✅ I'm in — tell me when to sell", `in:${mint}`);
+
+  // a graded SIGNAL → push with an "I'm in" button
+  engine.on("signal", (a: Analysis) => void pushAll(formatSignal(a), imInButton(a.mint)));
+
+  // live entry/exit alerts
+  engine.on("alert", (al: Alert) => {
+    if (al.kind === "ENTRY") {
+      void pushAll(formatAlert(al), imInButton(al.mint));
+    } else {
+      // general alert to everyone…
+      void pushAll(formatAlert(al));
+      // …plus a personalized EXIT ping to anyone who tapped "I'm in" on this token
+      if (al.kind === "EXIT" || al.kind === "EXIT_WARNING") notifyHolders(al);
+    }
+  });
+
+  const notifyHolders = async (al: Alert) => {
+    const live = tracker.liveMcapOf(al.mint);
+    for (const pos of store.userPositionsForMint(al.mint)) {
+      try {
+        await bot.api.sendMessage(pos.chatId, formatUserExit(pos, al, live), {
+          parse_mode: "HTML",
+          link_preview_options: { is_disabled: true },
+        });
+        if (al.terminal) store.closeUserPosition(pos.chatId, pos.mint);
+      } catch (e) {
+        log.warn(`exit ping to ${pos.chatId} failed:`, (e as Error).message);
+      }
+    }
+  };
+
+  // ---- "I'm in" / "Close" buttons ----
+  bot.callbackQuery(/^in:(.+)$/, async (ctx) => {
+    const mint = ctx.match[1];
+    const chatId = String(ctx.chat?.id ?? "");
+    const a = store.getAnalysis(mint);
+    const prof = activeProfile();
+    const entry = tracker.liveMcapOf(mint) ?? a?.bundleFacts?.earlyMarketCapSol ?? 0;
+    store.openUserPosition({
+      chatId,
+      mint,
+      symbol: a?.symbol,
+      name: a?.name,
+      entryMcapSol: entry,
+      entryAt: Date.now(),
+      stopLossPct: a?.exit.stopLossPct ?? prof.stopLossBase,
+      trailingStopPct: a?.exit.trailingStopPct ?? prof.trailingStopPct,
+      takeProfits: a?.exit.takeProfits ?? prof.takeProfits,
+      peakMcapSol: entry,
+    });
+    const pos = store.getUserPosition(chatId, mint)!;
+    await ctx.answerCallbackQuery({ text: "Tracking your position — sell plan below 👇" });
+    await ctx.reply(formatExitPlan(pos, tracker.liveMcapOf(mint)), {
+      parse_mode: "HTML",
+      link_preview_options: { is_disabled: true },
+      reply_markup: new InlineKeyboard().text("❌ I sold / close", `out:${mint}`),
+    });
+  });
+
+  bot.callbackQuery(/^out:(.+)$/, async (ctx) => {
+    const mint = ctx.match[1];
+    const chatId = String(ctx.chat?.id ?? "");
+    const ok = store.closeUserPosition(chatId, mint);
+    await ctx.answerCallbackQuery({ text: ok ? "Closed ✅" : "No open position." });
+  });
+
+  bot.command("mypos", (ctx) => {
+    const list = store.userPositionsForChat(String(ctx.chat.id));
+    if (!list.length) return ctx.reply("You have no open positions. Tap “I'm in” on a signal to track one.");
+    return ctx.reply(
+      list
+        .map((p) => {
+          const live = tracker.liveMcapOf(p.mint);
+          const chg = live && p.entryMcapSol > 0 ? ` (${live / p.entryMcapSol >= 1 ? "+" : ""}${(((live / p.entryMcapSol) - 1) * 100).toFixed(0)}%)` : "";
+          return `• ${p.symbol ?? p.mint.slice(0, 8)} — entry ${p.entryMcapSol.toFixed(0)} SOL mc${chg}`;
+        })
+        .join("\n"),
+    );
+  });
 
   bot.catch((err) => log.error("bot error:", err.message));
   // bot.start() long-polls; if the token is invalid it rejects — catch it so a

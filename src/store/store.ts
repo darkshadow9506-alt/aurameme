@@ -17,10 +17,29 @@ export interface SmartWallet {
   lastSeen: number;
 }
 
+/** A position a Telegram user told us they're in (tapped "I'm in"). */
+export interface UserPosition {
+  chatId: string;
+  mint: string;
+  symbol?: string;
+  name?: string;
+  /** market cap (SOL) when they entered; 0 if unknown */
+  entryMcapSol: number;
+  entryAt: number;
+  stopLossPct: number;
+  trailingStopPct: number;
+  takeProfits: { multiple: number; sellPct: number }[];
+  /** peak market cap seen since entry, for the trailing readout */
+  peakMcapSol: number;
+}
+
 interface Snapshot {
   analyses: Analysis[];
   smartWallets: SmartWallet[];
+  userPositions?: UserPosition[];
 }
+
+const upKey = (chatId: string, mint: string) => `${chatId}:${mint}`;
 
 const DATA_DIR = path.resolve(process.cwd(), "data");
 const FILE = path.join(DATA_DIR, "store.json");
@@ -29,6 +48,7 @@ const MAX_ANALYSES = 500;
 export class Store {
   private analyses = new Map<string, Analysis>();
   private smart = new Map<string, SmartWallet>();
+  private userPos = new Map<string, UserPosition>();
   private dirty = false;
 
   async init(seedWallets: string[] = []) {
@@ -37,6 +57,7 @@ export class Store {
       const snap = JSON.parse(raw) as Snapshot;
       for (const a of snap.analyses ?? []) this.analyses.set(a.mint, a);
       for (const w of snap.smartWallets ?? []) this.smart.set(w.wallet, w);
+      for (const p of snap.userPositions ?? []) this.userPos.set(upKey(p.chatId, p.mint), p);
     } catch {
       /* first run, no file yet */
     }
@@ -123,12 +144,33 @@ export class Store {
     return ok;
   }
 
+  // ---- per-user positions (Telegram "I'm in" flow) ----
+  openUserPosition(p: UserPosition) {
+    this.userPos.set(upKey(p.chatId, p.mint), p);
+    this.dirty = true;
+  }
+  getUserPosition(chatId: string, mint: string) {
+    return this.userPos.get(upKey(chatId, mint));
+  }
+  closeUserPosition(chatId: string, mint: string) {
+    const ok = this.userPos.delete(upKey(chatId, mint));
+    if (ok) this.dirty = true;
+    return ok;
+  }
+  userPositionsForMint(mint: string): UserPosition[] {
+    return [...this.userPos.values()].filter((p) => p.mint === mint);
+  }
+  userPositionsForChat(chatId: string): UserPosition[] {
+    return [...this.userPos.values()].filter((p) => p.chatId === chatId);
+  }
+
   async flush() {
     if (!this.dirty) return;
     this.dirty = false;
     const snap: Snapshot = {
       analyses: this.recentAnalyses(MAX_ANALYSES),
       smartWallets: this.allSmart(),
+      userPositions: [...this.userPos.values()],
     };
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.writeFile(FILE, JSON.stringify(snap, null, 2), "utf8");
