@@ -4,6 +4,7 @@ import { makeLogger } from "./util/logger.js";
 import { PumpPortal } from "./sources/pumpportal.js";
 import { getMintFacts, getHolderFacts } from "./sources/solanaRpc.js";
 import { getMarketFacts } from "./sources/dexscreener.js";
+import { getHolderStats, clusterEarlyBuyers } from "./sources/indexer.js";
 import { EarlyTradeCollector } from "./analysis/bundle.js";
 import { scoreToken } from "./analysis/score.js";
 import {
@@ -59,9 +60,15 @@ export class Engine extends EventEmitter {
 
   private async gradeLaunch(ev: PumpEvent) {
     this.pending.delete(ev.mint);
-    const bundleFacts = this.collector.finalize(ev.mint);
+    const { facts: bundleFacts, buyers } = this.collector.finalize(ev.mint);
     this.feed.unwatchToken(ev.mint);
     try {
+      // deep bundle detection: do many early buyers share one SOL funder?
+      const cluster = await clusterEarlyBuyers(buyers);
+      if (cluster) {
+        bundleFacts.funderClusterSize = cluster.largestCluster;
+        bundleFacts.funderGroups = cluster.funderGroups;
+      }
       const analysis = await this.analyzeMint(ev.mint, {
         name: ev.name,
         symbol: ev.symbol,
@@ -83,11 +90,15 @@ export class Engine extends EventEmitter {
       smartMoney?: SmartMoneyHit[];
     } = {},
   ): Promise<Analysis> {
-    const [mintFacts, holderFacts, marketFacts] = await Promise.all([
+    const [mintFacts, indexerHolders, marketFacts] = await Promise.all([
       getMintFacts(mint),
-      getHolderFacts(mint, config.engine.topHoldersCheck),
+      getHolderStats(mint),
       getMarketFacts(mint),
     ]);
+    // Prefer accurate indexer holder data; fall back to the RPC top-20 read.
+    const holderFacts =
+      indexerHolders ??
+      (await getHolderFacts(mint, config.engine.topHoldersCheck));
 
     const analysis = scoreToken({
       mint,

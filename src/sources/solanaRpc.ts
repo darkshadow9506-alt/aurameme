@@ -125,6 +125,34 @@ export async function getHolderFacts(
   }
 }
 
+export const SYSTEM_PROGRAM = "11111111111111111111111111111111";
+
+/**
+ * Resolve the *owning program* of each address via getMultipleAccounts.
+ * A normal user wallet is owned by the System Program; anything else
+ * (bonding curve, AMM pool, escrow) is a PDA we treat as infrastructure.
+ * Returns addr -> programId | null (null = account not found / no data).
+ */
+export async function getAccountOwners(
+  addresses: string[],
+): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  for (let i = 0; i < addresses.length; i += 100) {
+    const batch = addresses.slice(i, i + 100);
+    try {
+      const res = await rpc<{ value: ({ owner: string } | null)[] }>(
+        "getMultipleAccounts",
+        [batch, { encoding: "base64" }],
+      );
+      res.value.forEach((acc, idx) => out.set(batch[idx], acc?.owner ?? null));
+    } catch (e) {
+      log.warn("getAccountOwners batch failed:", (e as Error).message);
+      for (const a of batch) out.set(a, null);
+    }
+  }
+  return out;
+}
+
 /** Resolve the on-chain owner of a token account (used for clustering). */
 export async function getTokenAccountOwner(addr: string): Promise<string | null> {
   try {

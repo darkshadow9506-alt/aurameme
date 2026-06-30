@@ -32,13 +32,25 @@ export class EarlyTradeCollector {
     if (rec && !rec.done) rec.events.push(ev);
   }
 
-  /** Finalize and return the bundle facts; frees memory. */
-  finalize(mint: string): BundleFacts {
+  /** Finalize and return the bundle facts + early-buyer wallets; frees memory. */
+  finalize(mint: string): { facts: BundleFacts; buyers: string[] } {
     const rec = this.map.get(mint);
     this.map.delete(mint);
-    if (!rec) return { mint, earlyBuyerCount: 0, sniperSupplyPct: 0, clusterCount: 0 };
+    if (!rec)
+      return {
+        facts: { mint, earlyBuyerCount: 0, sniperSupplyPct: 0, clusterCount: 0 },
+        buyers: [],
+      };
     rec.done = true;
-    return analyzeEarlyTrades(mint, rec.createdAt, rec.events);
+    const facts = analyzeEarlyTrades(mint, rec.createdAt, rec.events);
+    const buyers = [
+      ...new Set(
+        rec.events
+          .filter((e) => e.txType === "buy" && e.traderPublicKey)
+          .map((e) => e.traderPublicKey as string),
+      ),
+    ];
+    return { facts, buyers };
   }
 
   has(mint: string) {

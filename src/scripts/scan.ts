@@ -21,7 +21,19 @@ async function main() {
     console.log("Mint au :", a.mintFacts.mintAuthorityRenounced ? "renounced ✅" : "LIVE ⚠️ (can dilute)");
   }
   if (a.holderFacts) {
-    console.log("TopHold :", a.holderFacts.topHolderPct.toFixed(1) + "%", "| top10:", a.holderFacts.top10Pct.toFixed(1) + "%");
+    console.log(
+      "Holders :",
+      a.holderFacts.holderCount ?? "—",
+      `(${a.holderFacts.source ?? "rpc"})`,
+      "| top:",
+      a.holderFacts.topHolderPct.toFixed(1) + "%",
+      "| top10:",
+      a.holderFacts.top10Pct.toFixed(1) + "%",
+      a.holderFacts.lpCurvePct != null ? `| LP/curve: ${a.holderFacts.lpCurvePct.toFixed(1)}%` : "",
+    );
+  }
+  if (a.bundleFacts && a.bundleFacts.funderClusterSize != null) {
+    console.log("Bundle  :", `${a.bundleFacts.funderClusterSize} buyers share 1 funder`, `(${a.bundleFacts.funderGroups} funder groups)`);
   }
   if (a.marketFacts) {
     console.log("Liquid  :", a.marketFacts.liquidityUsd, "| MC:", a.marketFacts.marketCapUsd);

@@ -33,6 +33,10 @@ export function formatSignal(a: Analysis): string {
     lines.push(
       `Vol24h ${usd(m.volume24hUsd)}  •  1h ${pct(m.priceChange.h1)}  •  Buys/Sells ${m.buys24h ?? "—"}/${m.sells24h ?? "—"}`,
     );
+    if (a.holderFacts?.holderCount != null)
+      lines.push(
+        `Holders ${a.holderFacts.holderCount}  •  Top holder ${a.holderFacts.topHolderPct.toFixed(1)}%  •  Top10 ${a.holderFacts.top10Pct.toFixed(1)}%`,
+      );
     lines.push("");
   }
 

@@ -97,6 +97,20 @@ export function scoreToken(input: ScoreInput): Analysis {
     } else if (hf.top10Pct > 0 && hf.top10Pct < 35) {
       greenFlags.push(`Holdings fairly spread (top 10 = ${hf.top10Pct.toFixed(1)}%).`);
     }
+
+    // accurate holder count (indexer only)
+    if (hf.holderCount != null) {
+      if (hf.holderCount < 15) {
+        redFlags.push({
+          code: "FEW_HOLDERS",
+          severity: "medium",
+          message: `Only ${hf.holderCount} holders — too few to trust, easy to coordinate a dump.`,
+        });
+        safety -= 12;
+      } else if (hf.holderCount >= 200) {
+        greenFlags.push(`Healthy distribution (${hf.holderCount} holders).`);
+      }
+    }
   }
 
   const bf = input.bundleFacts;
@@ -117,6 +131,17 @@ export function scoreToken(input: ScoreInput): Analysis {
         message: `Snipers grabbed ~${bf.sniperSupplyPct.toFixed(1)}% of supply at launch.`,
       });
       safety -= 20;
+    }
+    // funder clustering: several early buyers funded by ONE wallet = bundled
+    if (bf.funderClusterSize != null && bf.funderClusterSize >= 4) {
+      const critical = bf.funderClusterSize >= 8;
+      redFlags.push({
+        code: "FUNDER_CLUSTER",
+        severity: critical ? "critical" : "high",
+        message: `${bf.funderClusterSize} early buyers were funded by the SAME wallet — coordinated insider bundle.`,
+      });
+      safety -= critical ? 45 : 25;
+      if (critical) criticalSafety = true;
     }
   }
 

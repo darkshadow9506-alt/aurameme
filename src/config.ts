@@ -27,6 +27,9 @@ export const config = {
   solanaRpcUrl: str("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
   pumpPortalWsUrl: str("PUMPPORTAL_WS_URL", "wss://pumpportal.fun/api/data"),
   dexscreenerBase: str("DEXSCREENER_BASE", "https://api.dexscreener.com"),
+  // Optional indexers — unlock accurate holder counts & funder clustering.
+  heliusApiKey: str("HELIUS_API_KEY"),
+  birdeyeApiKey: str("BIRDEYE_API_KEY"),
   web: {
     port: num("WEB_PORT", 8787),
     host: str("WEB_HOST", "127.0.0.1"),

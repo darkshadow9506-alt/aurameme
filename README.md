@@ -33,6 +33,14 @@
 - **تشخیص bundle/sniper**: چند کیف‌پول که تو همون ثانیه‌های اول لانچ خریدن = اینسایدرهای هماهنگ.
 - **نقدینگی و حجم**: نقدینگی خیلی کم = اسلیپیج بالا و دستکاری راحت.
 
+> **دقت بالاتر با indexer:** اگه کلید **Helius** بذاری (رایگان)، آنالیز هولدرها و باندل خیلی دقیق‌تر می‌شه — جزئیات پایین.
+
+### ۱.۵) لایه‌ی indexer (Helius/Birdeye) — `src/sources/indexer.ts`
+با کلید رایگان Helius (و اختیاری Birdeye) این‌ها فعال می‌شن:
+- **تعداد دقیق هولدرها** (نه فقط ۲۰ تای اول): از Helius DAS `getTokenAccounts`.
+- **تمرکز با حذف نقدینگی/منحنی**: اکانت‌های pump.fun/Raydium/Orca/Jupiter که برنامه‌مالک‌اند از محاسبه‌ی «نهنگ» حذف می‌شن. (این یه ایراد رایج رو حل می‌کنه: توکن تازه‌ی pump.fun که اکثر عرضه‌ش تو bonding curve است، اشتباهاً «نهنگ ۸۰٪» فلگ نمی‌خوره.)
+- **کلاسترینگ بر اساس منبع تأمین SOL**: برای هر خریدارِ اولیه، اولین کیف‌پولی که بهش SOL داده رو پیدا می‌کنه؛ اگه چند خریدار اولیه از **یک منبع** پول گرفته باشن = **باندل اینسایدریِ هماهنگ** (قوی‌ترین نشانه). از ۸ تا بالاتر → AVOID.
+
 ### ۲) ردگیری Smart Money — `src/analysis/smartMoney.ts`
 - لیست کیف‌پول‌هایی که **سابقاً سود واقعی** کردن نگه می‌داره.
 - وقتی یکی‌شون می‌خره → سیگنال قوی. وقتی می‌فروشه → **هشدار خروج**.
@@ -90,6 +98,8 @@ npm run scan -- <mint-address>
 - **TELEGRAM_BOT_TOKEN**: از [@BotFather](https://t.me/BotFather) بساز.
 - **TELEGRAM_CHAT_IDS**: chat id خودت (از [@userinfobot](https://t.me/userinfobot)).
 - **SOLANA_RPC_URL**: RPC عمومی خیلی محدوده. یه کلید **رایگان** از [Helius](https://helius.dev) یا QuickNode بگیر و URL کاملش رو بذار. (کیفیت سیگنال‌ها مستقیم به کیفیت RPC بستگی داره.)
+- **HELIUS_API_KEY** (توصیه‌ی اکید): تعداد دقیق هولدرها، تمرکزِ بدونِ نقدینگی، و کلاسترینگ باندل رو فعال می‌کنه. همون کلید رو می‌تونی برای `SOLANA_RPC_URL` هم بذاری: `https://mainnet.helius-rpc.com/?api-key=YOUR_KEY`.
+- **BIRDEYE_API_KEY** (اختیاری): fallback برای داده‌ی هولدرها.
 
 ### دستورهای تلگرام
 ```
@@ -108,14 +118,15 @@ npm run scan -- <mint-address>
 
 ```
 PumpPortal (وب‌سوکت لحظه‌ای) ─┐
-DexScreener (داده‌ی بازار)   ─┼─▶ Engine ─▶ Score ─▶ Strategy ─┬─▶ Telegram
-Solana RPC (mint/holders)   ─┘     (orchestrator)              ├─▶ Web Dashboard (SSE)
-                                                               └─▶ Store (JSON)
+DexScreener (داده‌ی بازار)   ─┤
+Solana RPC (mint/holders)   ─┼─▶ Engine ─▶ Score ─▶ Strategy ─┬─▶ Telegram
+Indexer (Helius: holders,   ─┘     (orchestrator)              ├─▶ Web Dashboard (SSE)
+   funder-cluster, Birdeye)                                    └─▶ Store (JSON)
 ```
 
 | پوشه | کارش |
 |---|---|
-| `src/sources/` | منابع داده: `pumpportal` (لحظه‌ای)، `dexscreener` (بازار)، `solanaRpc` (آن‌چین) |
+| `src/sources/` | منابع داده: `pumpportal` (لحظه‌ای)، `dexscreener` (بازار)، `solanaRpc` (آن‌چین)، `indexer` (Helius/Birdeye) |
 | `src/analysis/` | `score` (امتیاز/verdict)، `bundle` (اینسایدر)، `smartMoney` (ردگیری کیف‌پول) |
 | `src/signals/` | `strategy` (ورود/خروج/استاپ) |
 | `src/telegram/` | بات و فرمت پیام |
@@ -134,7 +145,8 @@ Solana RPC (mint/holders)   ─┘     (orchestrator)              ├─▶ Web
 ---
 
 ## محدودیت‌ها و کارهای بعدی
-- شمارش دقیق تعداد هولدرها و کلاسترینگ کامل کیف‌پول‌ها به یک **indexer** (Helius/Birdeye) نیاز داره؛ فعلاً heuristic است.
+- شمارش دقیق هولدرها، تمرکزِ بدونِ نقدینگی، و کلاسترینگِ باندل **با کلید Helius فعال‌اند** (`src/sources/indexer.ts`). بدون کلید، به‌صورت heuristic روی RPC کار می‌کنه.
+- کلاسترینگ funder به‌صورت best-effort و محدود (تا ۲۵ کیف‌پول) اجرا می‌شه تا سهمیه‌ی API مصرف نشه.
 - کشف خودکار smart money هرچی ربات بیشتر اجرا بشه دقیق‌تر می‌شه.
 - اجرای خودکار معامله عمداً پیاده نشده (مدیریت کلید خصوصی = ریسک امنیتی بالا). فعلاً فقط لینک ترید می‌ده.
 

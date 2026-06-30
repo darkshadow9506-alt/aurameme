@@ -31,12 +31,17 @@ export interface MintFacts {
 
 export interface HolderFacts {
   mint: string;
-  topHolders: { owner: string; amount: number; pct: number }[];
-  /** % held by the largest single non-pool holder */
+  topHolders: { owner: string; amount: number; pct: number; infra?: boolean }[];
+  /** % held by the largest single real holder (LP/curve excluded) */
   topHolderPct: number;
-  /** % held by the top 10 holders combined */
+  /** % held by the top 10 real holders combined (LP/curve excluded) */
   top10Pct: number;
+  /** true distinct holder count (indexer only); null on the RPC fallback */
   holderCount: number | null;
+  /** % held by liquidity pool / bonding-curve accounts (informational) */
+  lpCurvePct?: number | null;
+  /** where the data came from */
+  source?: "indexer" | "rpc";
 }
 
 export interface MarketFacts {
@@ -61,8 +66,12 @@ export interface BundleFacts {
   earlyBuyerCount: number;
   /** estimated % of supply captured by snipers in the launch window */
   sniperSupplyPct: number;
-  /** rough cluster count of wallets funded from the same source */
+  /** count of near-simultaneous launch buys (timing-based bundle tell) */
   clusterCount: number;
+  /** largest group of early buyers that share one SOL funding source (indexer) */
+  funderClusterSize?: number;
+  /** how many distinct funding sources backed the early buyers (indexer) */
+  funderGroups?: number;
 }
 
 export interface SmartMoneyHit {

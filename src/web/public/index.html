@@ -124,7 +124,9 @@ function showDetail(mint){
       <div>1h change</div><div>${fmtPct(m.priceChange&&m.priceChange.h1)}</div>
       <div>Mint auth</div><div>${a.mintFacts?(a.mintFacts.mintAuthorityRenounced?'renounced ✅':'LIVE ⚠️'):'—'}</div>
       <div>Freeze auth</div><div>${a.mintFacts?(a.mintFacts.freezeAuthorityRenounced?'renounced ✅':'LIVE 🛑'):'—'}</div>
-      <div>Top holder</div><div>${a.holderFacts?a.holderFacts.topHolderPct.toFixed(1)+'%':'—'}</div>
+      <div>Holders</div><div>${a.holderFacts&&a.holderFacts.holderCount!=null?a.holderFacts.holderCount+' ('+(a.holderFacts.source||'rpc')+')':'—'}</div>
+      <div>Top holder</div><div>${a.holderFacts?a.holderFacts.topHolderPct.toFixed(1)+'%':'—'}${a.holderFacts&&a.holderFacts.lpCurvePct!=null?' • LP/curve '+a.holderFacts.lpCurvePct.toFixed(1)+'%':''}</div>
+      ${a.bundleFacts&&a.bundleFacts.funderClusterSize!=null?`<div>Bundle</div><div>${a.bundleFacts.funderClusterSize} buyers / 1 funder</div>`:''}
     </div>
     ${a.greenFlags.map(g=>`<div class="flag green">🟢 ${esc(g)}</div>`).join('')}
     ${a.redFlags.map(f=>`<div class="flag red">🔴 [${f.severity}] ${esc(f.message)}</div>`).join('')}
