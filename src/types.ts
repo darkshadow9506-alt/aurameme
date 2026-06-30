@@ -101,6 +101,10 @@ export interface ExitPlan {
   takeProfits: { multiple: number; sellPct: number }[];
   stopLossPct: number;
   trailingStopPct: number;
+  /** after the first take-profit, move the stop to break-even (entry price) */
+  breakevenAfterFirstTp: boolean;
+  /** tighter trailing % applied once the 2nd take-profit is banked */
+  trailingTightPct: number;
   /** human-readable dynamic exit triggers */
   exitTriggers: string[];
 }

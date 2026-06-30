@@ -24,6 +24,9 @@ export const config = {
     token: str("TELEGRAM_BOT_TOKEN"),
     chatIds: list("TELEGRAM_CHAT_IDS"),
   },
+  // Route all outbound traffic through a proxy (for running inside Iran on your
+  // own machine). Supports http://, https://, socks5://, socks4:// URLs.
+  proxyUrl: str("PROXY_URL") || str("HTTPS_PROXY") || str("ALL_PROXY"),
   solanaRpcUrl: str("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
   pumpPortalWsUrl: str("PUMPPORTAL_WS_URL", "wss://pumpportal.fun/api/data"),
   dexscreenerBase: str("DEXSCREENER_BASE", "https://api.dexscreener.com"),

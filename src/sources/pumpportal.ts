@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import WebSocket from "ws";
 import { config } from "../config.js";
 import { makeLogger } from "../util/logger.js";
+import { getWsAgent } from "../net/proxy.js";
 import type { PumpEvent, TxType } from "../types.js";
 
 const log = makeLogger("pumpportal");
@@ -27,7 +28,10 @@ export class PumpPortal extends EventEmitter {
 
   private connect() {
     log.info("connecting", config.pumpPortalWsUrl);
-    const ws = new WebSocket(config.pumpPortalWsUrl);
+    const agent = getWsAgent();
+    const ws = agent
+      ? new WebSocket(config.pumpPortalWsUrl, { agent } as ConstructorParameters<typeof WebSocket>[2])
+      : new WebSocket(config.pumpPortalWsUrl);
     this.ws = ws;
 
     ws.on("open", () => {

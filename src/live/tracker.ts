@@ -19,6 +19,8 @@ interface PosState {
   topHolders: Set<string>;
   stopLossPct: number;
   trailingStopPct: number;
+  firstTpMult: number;
+  breakevenArmed: boolean;
   entered: boolean;
   exited: boolean;
   entryAlerted: boolean;
@@ -75,6 +77,8 @@ export class Tracker extends EventEmitter {
       topHolders: new Set((a.holderFacts?.topHolders ?? []).map((h) => h.owner)),
       stopLossPct: a.exit.stopLossPct,
       trailingStopPct: a.exit.trailingStopPct,
+      firstTpMult: a.exit.takeProfits[0]?.multiple ?? 1.5,
+      breakevenArmed: false,
       entered: false,
       exited: false,
       entryAlerted: false,
@@ -97,6 +101,8 @@ export class Tracker extends EventEmitter {
     const mcap = ev.marketCapSol ?? p.lastMcap;
     p.lastMcap = mcap;
     if (mcap > p.peakMcap) p.peakMcap = mcap;
+    // arm the break-even stop once the first take-profit level is reached
+    if (p.entered && p.entryMcap && mcap >= p.entryMcap * p.firstTpMult) p.breakevenArmed = true;
     const now = ev.receivedAt;
     p.window.push({ t: now, mcap });
     while (p.window.length && now - p.window[0].t > DUMP_WINDOW_MS) p.window.shift();
@@ -157,7 +163,12 @@ export class Tracker extends EventEmitter {
       return this.exit(p, `🩸 Sudden dump: -${dropFromWindowPeak.toFixed(0)}% in <${DUMP_WINDOW_MS / 1000}s — market-sell.`, mcap);
     }
 
-    // 3) trailing stop once in profit => terminal EXIT
+    // 3) break-even stop: it popped to the first TP then came back => protect
+    if (p.breakevenArmed && p.entryMcap && mcap <= p.entryMcap) {
+      return this.exit(p, `🟰 Back to break-even after taking first profit — protect capital, exit.`, mcap);
+    }
+
+    // 4) trailing stop once in profit => terminal EXIT
     if (p.entered && p.entryMcap && p.peakMcap > p.entryMcap) {
       const dropFromPeak = ((p.peakMcap - mcap) / p.peakMcap) * 100;
       const inProfit = mcap > p.entryMcap;
@@ -166,13 +177,13 @@ export class Tracker extends EventEmitter {
       }
     }
 
-    // 4) hard stop-loss => terminal EXIT
+    // 5) hard stop-loss => terminal EXIT
     if (p.entered && p.entryMcap && mcap <= p.entryMcap * (1 - p.stopLossPct / 100)) {
       const loss = ((p.entryMcap - mcap) / p.entryMcap) * 100;
       return this.exit(p, `🛑 Stop-loss: -${loss.toFixed(0)}% from entry — cut it.`, mcap);
     }
 
-    // 5) whale / top-holder selling => non-terminal WARNING (cooldown)
+    // 6) whale / top-holder selling => non-terminal WARNING (cooldown)
     if ((isWhaleSell || isTop) && now - p.lastWarnAt > WARN_COOLDOWN_MS) {
       p.lastWarnAt = now;
       this.fire(p, {

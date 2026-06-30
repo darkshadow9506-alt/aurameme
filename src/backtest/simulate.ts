@@ -51,7 +51,7 @@ const RUG_FILL = 0.3;
 export function simulatePosition(token: BtToken): TradeResult {
   const series = token.series;
   const verdict: Verdict = token.verdict ?? "SIGNAL";
-  const entryIdx = token.entryIndex ?? 0;
+  let entryIdx = token.entryIndex ?? 0;
 
   const { entry, exit } = buildEntryExit({
     score: verdict === "STRONG_SIGNAL" ? 85 : verdict === "SIGNAL" ? 72 : 55,
@@ -60,9 +60,26 @@ export function simulatePosition(token: BtToken): TradeResult {
     smartSelling: false,
   });
 
-  const hasSmartBuy = (token.events ?? []).some((e) => e.type === "smartBuy");
-  const willEnter = entry.shouldEnter || (hasSmartBuy && verdict !== "AVOID");
-  if (!willEnter || series.length <= entryIdx + 1) {
+  // Confirmation entry — mirrors the live rule "get in when whales/smart money
+  // buy". We enter on the smart-buy event, or on the first sign of upward
+  // momentum (+8% within the opening window). Tokens that only bleed from the
+  // start are never entered, which is the cleanest win-rate lever.
+  const events = token.events ?? [];
+  const smartBuyIdx = events.find((e) => e.type === "smartBuy" && e.at >= entryIdx)?.at;
+  let enterAt = -1;
+  if (smartBuyIdx != null && verdict !== "AVOID") {
+    enterAt = smartBuyIdx;
+  } else if (verdict !== "AVOID" && entry.shouldEnter) {
+    const base = series[entryIdx].mcap;
+    const window = Math.min(series.length - 1, entryIdx + 12);
+    for (let i = entryIdx + 1; i <= window; i++) {
+      if (series[i].mcap >= base * 1.08) {
+        enterAt = i;
+        break;
+      }
+    }
+  }
+  if (enterAt < 0 || series.length <= enterAt + 1) {
     return {
       mint: token.mint,
       name: token.name,
@@ -70,9 +87,10 @@ export function simulatePosition(token: BtToken): TradeResult {
       strategy: 1,
       buyHold: 1,
       peakMultiple: 1,
-      exitReason: "no entry (verdict/plan said wait)",
+      exitReason: "no entry (no momentum confirmation)",
     };
   }
+  entryIdx = enterAt;
 
   const entryPrice = series[entryIdx].mcap;
   const eventAt = new Map<number, BtEvent["type"]>();
@@ -83,6 +101,7 @@ export function simulatePosition(token: BtToken): TradeResult {
   let remaining = 1; // fraction of position still held
   let realized = 0; // accumulated proceeds in cost-multiples
   let peakMultiple = 1;
+  let tpHits = 0; // how many take-profit tiers have filled
   let exitReason = "rode to end of window";
 
   const sellAll = (priceMult: number, reason: string) => {
@@ -112,6 +131,7 @@ export function simulatePosition(token: BtToken): TradeResult {
         realized += (t.sellPct / 100) * t.multiple;
         remaining -= t.sellPct / 100;
         t.done = true;
+        tpHits++;
       }
     }
     if (remaining <= 0.0001) {
@@ -120,14 +140,18 @@ export function simulatePosition(token: BtToken): TradeResult {
       break;
     }
 
-    // trailing stop once in profit
-    if (mult > 1 && mult <= peakMultiple * (1 - exit.trailingStopPct / 100)) {
+    // trailing stop once in profit (tightens after the 2nd take-profit)
+    const trail = tpHits >= 2 ? exit.trailingTightPct : exit.trailingStopPct;
+    if (mult > 1 && mult <= peakMultiple * (1 - trail / 100)) {
       sellAll(mult, "trailing stop");
       break;
     }
-    // hard stop-loss
-    if (mult <= 1 - exit.stopLossPct / 100) {
-      sellAll(mult, "stop-loss");
+
+    // stop-loss: break-even once the first TP is banked, else the hard stop.
+    // This is the win-rate lever: a trade that popped to 1.5x can't go red.
+    const stopFloor = exit.breakevenAfterFirstTp && tpHits >= 1 ? 1 : 1 - exit.stopLossPct / 100;
+    if (mult <= stopFloor) {
+      sellAll(mult, tpHits >= 1 ? "break-even stop (profit protected)" : "stop-loss");
       break;
     }
   }

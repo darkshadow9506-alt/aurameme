@@ -1,5 +1,6 @@
 import { config } from "./config.js";
 import { makeLogger } from "./util/logger.js";
+import { setupProxy } from "./net/proxy.js";
 import { store } from "./store/store.js";
 import { engine } from "./engine.js";
 import { startTelegram } from "./telegram/bot.js";
@@ -12,6 +13,9 @@ async function main() {
   log.info(
     `config: minScore=${config.engine.signalMinScore} minLiq=$${config.engine.minLiquidityUsd} dryRun=${config.dryRun}`,
   );
+
+  // route outbound traffic through a proxy first (for running inside Iran)
+  await setupProxy();
 
   await store.init(config.engine.smartMoneyWallets);
 

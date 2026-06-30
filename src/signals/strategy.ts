@@ -63,31 +63,42 @@ export function buildEntryExit(input: StrategyInput): {
   const entry: EntryPlan = { shouldEnter, reason, maxPositionPct, notes };
 
   // ----- EXIT -----
-  // Tiered take-profit ladder: bank cost basis early, ride the rest.
+  // Tiered take-profit ladder. The FIRST tier de-risks early (1.5x) so that,
+  // combined with moving the stop to break-even afterwards, most pumps that
+  // fade still close green instead of red — this is the main win-rate lever.
   const takeProfits = [
-    { multiple: 2, sellPct: 35 }, // at 2x sell 35% -> de-risk most of cost
+    { multiple: 1.5, sellPct: 20 }, // early de-risk → arms the break-even stop
+    { multiple: 2, sellPct: 25 },
     { multiple: 3, sellPct: 25 },
     { multiple: 5, sellPct: 20 },
-    { multiple: 10, sellPct: 10 }, // moonbag
-    // remaining ~10% rides on the trailing stop only
+    { multiple: 10, sellPct: 10 }, // moonbag rides on the trailing stop
   ];
 
   // tighter stops for riskier setups
   const stopLossPct = verdict === "STRONG_SIGNAL" ? 40 : verdict === "SIGNAL" ? 35 : 30;
   const trailingStopPct = 35;
+  const trailingTightPct = 22; // after the 2nd TP, lock gains harder
 
   const exitTriggers = [
+    "✅ After the FIRST take-profit (1.5x), move your stop to BREAK-EVEN — now the trade can't become a loss.",
     "Smart-money wallets start SELLING → exit immediately, don't wait for the chart.",
     `Liquidity drops > 30% suddenly → likely LP pull / rug → market-sell now.`,
     "Top holder / dev wallet sends a large transfer or sell → exit.",
     "Buy/sell ratio flips and volume dries up after a spike → take profit, momentum gone.",
-    `Trailing stop: once in profit, exit if price falls ${trailingStopPct}% from its peak.`,
+    `Trailing stop: ${trailingStopPct}% from peak (tightens to ${trailingTightPct}% after the 2nd take-profit).`,
     "Freeze authority appears / mint authority used → exit instantly (sell-while-you-can).",
   ];
   if (smartSelling)
     exitTriggers.unshift("⚠️ Smart money is ALREADY selling on this token right now.");
 
-  const exit: ExitPlan = { takeProfits, stopLossPct, trailingStopPct, exitTriggers };
+  const exit: ExitPlan = {
+    takeProfits,
+    stopLossPct,
+    trailingStopPct,
+    breakevenAfterFirstTp: true,
+    trailingTightPct,
+    exitTriggers,
+  };
 
   return { entry, exit };
 }
