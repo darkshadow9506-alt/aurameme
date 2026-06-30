@@ -6,7 +6,7 @@ export function base58Encode(bytes: Uint8Array): string {
   let zeros = 0;
   while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
 
-  const digits: number[] = [0];
+  const digits: number[] = [];
   for (let i = zeros; i < bytes.length; i++) {
     let carry = bytes[i];
     for (let j = 0; j < digits.length; j++) {

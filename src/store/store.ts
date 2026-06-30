@@ -87,6 +87,11 @@ export class Store {
     return [...this.smart.values()].sort((a, b) => b.pnlSol - a.pnlSol);
   }
 
+  /** O(1) count, for hot-path cap checks (avoids sorting the whole table). */
+  smartCount(): number {
+    return this.smart.size;
+  }
+
   addSmart(wallet: string, label = "manual") {
     if (!this.smart.has(wallet)) {
       this.smart.set(wallet, {

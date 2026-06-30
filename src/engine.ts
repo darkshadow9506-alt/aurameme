@@ -34,6 +34,9 @@ export class Engine extends EventEmitter {
   readonly feed: TokenFeed = createFeed();
   private collector = new EarlyTradeCollector();
   private pending = new Set<string>();
+  /** how many tokens are mid-analysis right now (back-pressure for the firehose) */
+  private grading = 0;
+  private stats = { graded: 0, signals: 0, alerts: 0 };
 
   start() {
     // seed smart-money watch list
@@ -52,11 +55,20 @@ export class Engine extends EventEmitter {
     // tracker tells us when to release a token; its alerts are re-emitted.
     tracker.on("drop", (mint: string) => this.feed.unwatchToken(mint));
     tracker.on("alert", (alert) => this.emit("alert", alert));
+    tracker.on("alert", () => this.stats.alerts++);
     // tracker reports round-trip traders on closed tokens → learn the winners
     tracker.on("settled", (s: { mint: string; roundtrips: { wallet: string; pnlSol: number }[] }) =>
       this.onSettled(s),
     );
     tracker.start();
+
+    // periodic health heartbeat so you can see at a glance it's alive & working
+    setInterval(() => {
+      log.info(
+        `stats: graded=${this.stats.graded} signals=${this.stats.signals} alerts=${this.stats.alerts} ` +
+          `tracking=${tracker.positionsDTO().length} smartWallets=${store.smartCount()}`,
+      );
+    }, 60_000).unref();
 
     this.feed.start();
     log.ok("engine started — listening for new pump.fun tokens");
@@ -84,6 +96,15 @@ export class Engine extends EventEmitter {
       this.feed.unwatchToken(ev.mint);
       return;
     }
+
+    // Back-pressure: if we're already saturated with in-flight analyses, drop
+    // this one rather than letting the request queue grow without bound. Most
+    // launches are junk, so shedding load under a burst is the right call.
+    if (this.grading >= config.engine.maxGradingInflight) {
+      this.feed.unwatchToken(ev.mint);
+      return;
+    }
+    this.grading++;
 
     // NOTE: the token stays subscribed here. If it's trackable we hand it to the
     // tracker (which needs the live trade stream); only non-trackable tokens are
@@ -115,6 +136,8 @@ export class Engine extends EventEmitter {
     } catch (e) {
       log.warn(`grade failed ${ev.mint.slice(0, 8)}:`, (e as Error).message);
       this.feed.unwatchToken(ev.mint);
+    } finally {
+      this.grading--;
     }
   }
 
@@ -153,6 +176,7 @@ export class Engine extends EventEmitter {
 
   private publish(a: Analysis) {
     store.upsertAnalysis(a);
+    this.stats.graded++;
     this.emit("analysis", a);
 
     const passesLiquidity =
@@ -160,6 +184,7 @@ export class Engine extends EventEmitter {
       a.smartMoney.some((s) => s.action === "buy");
 
     if (a.score >= config.engine.signalMinScore && passesLiquidity) {
+      this.stats.signals++;
       log.ok(`SIGNAL ${a.verdict} ${a.score} — ${a.symbol ?? a.mint.slice(0, 8)}`);
       this.emit("signal", a);
     } else {
@@ -209,7 +234,7 @@ export class Engine extends EventEmitter {
         recordRoundTrip(r.wallet, s.mint, r.pnlSol); // keep its W/L record current
       } else if (r.pnlSol >= config.engine.discoveryMinProfitSol) {
         recordRoundTrip(r.wallet, s.mint, r.pnlSol); // promote a real winner
-        if (store.isSmart(r.wallet) && store.allSmart().length <= config.engine.maxWatchedWallets) {
+        if (store.isSmart(r.wallet) && store.smartCount() <= config.engine.maxWatchedWallets) {
           this.feed.watchWallet(r.wallet);
           log.ok(`discovered smart wallet ${r.wallet.slice(0, 6)}… (+${r.pnlSol.toFixed(2)} SOL)`);
         }

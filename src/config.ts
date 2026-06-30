@@ -51,6 +51,8 @@ export const config = {
     maxWatchedWallets: num("MAX_WATCHED_WALLETS", 300),
     /** funder-cluster bundle check is heavy (many RPC calls); off by default. */
     enableFunderCluster: str("ENABLE_FUNDER_CLUSTER", "0") !== "0",
+    /** max tokens analyzed at once; extra launches are dropped under a burst. */
+    maxGradingInflight: num("MAX_GRADING_INFLIGHT", 25),
   },
   /** max simultaneous outbound API requests (protects free RPC tiers & the VPN). */
   maxConcurrentRequests: num("MAX_CONCURRENT_REQUESTS", 5),
