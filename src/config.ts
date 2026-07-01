@@ -46,7 +46,7 @@ export const config = {
     topHoldersCheck: num("TOP_HOLDERS_CHECK", 20),
     smartMoneyWallets: list("SMART_MONEY_WALLETS"),
     /** min realized profit (SOL) on a token before we auto-discover a wallet. */
-    discoveryMinProfitSol: num("DISCOVERY_MIN_PROFIT_SOL", 1),
+    discoveryMinProfitSol: num("DISCOVERY_MIN_PROFIT_SOL", 3),
     /** cap on how many wallets we subscribe to (websocket budget). */
     maxWatchedWallets: num("MAX_WATCHED_WALLETS", 300),
     /** funder-cluster bundle check is heavy (many RPC calls); off by default. */
@@ -71,6 +71,15 @@ export const config = {
   /** entry/exit aggressiveness: conservative | balanced | aggressive | moon.
    *  Default "moon" — the profile that maximised total profit in `npm run sweep`. */
   strategyProfile: str("STRATEGY_PROFILE", "moon"),
+  /** Tunable thresholds for the strict "conviction" signal gate. Loosen for more
+   *  signals per day, tighten for fewer/safer. */
+  conviction: {
+    minBuyers: num("CONVICTION_MIN_BUYERS", 10),
+    minSolVolume: num("CONVICTION_MIN_SOL_VOL", 4),
+    maxTopHolderPct: num("CONVICTION_MAX_TOP_HOLDER_PCT", 35),
+    maxTop10Pct: num("CONVICTION_MAX_TOP10_PCT", 65),
+    minMarketCapSol: num("CONVICTION_MIN_MCAP_SOL", 42),
+  },
   dryRun: str("DRY_RUN", "1") !== "0",
 } as const;
 
