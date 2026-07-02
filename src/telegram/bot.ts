@@ -5,7 +5,7 @@ import { engine } from "../engine.js";
 import { store } from "../store/store.js";
 import { tracker } from "../live/tracker.js";
 import { activeProfile } from "../signals/profiles.js";
-import { formatSignal, formatShort, formatExitPlan, formatUserExit } from "./format.js";
+import { formatSignal, formatShort, formatAlert, formatExitPlan, formatUserExit } from "./format.js";
 import type { Analysis, Alert } from "../types.js";
 
 const log = makeLogger("telegram");
@@ -153,10 +153,13 @@ export function startTelegram(): Bot | null {
   // "I'm in" button — the safest, whale/demand-backed, explosive picks.
   engine.on("signal", (a: Analysis) => void pushAll(formatSignal(a), imInButton(a.mint)));
 
-  // Live exits are pushed ONLY to users who tapped "I'm in" (personalized).
-  // No generic entry/exit broadcast — that was the noise.
+  // Whale ENTRY alerts are now strict (>=WHALE_BUY_SOL single buy, token not
+  // AVOID, once per token) — rare and meaningful, so push them with the button.
+  // (Ritz case: a detected whale entry 10x'd but only the dashboard saw it.)
+  // Exits stay personalized: only users who tapped "I'm in" get them.
   engine.on("alert", (al: Alert) => {
-    if (al.kind === "EXIT" || al.kind === "EXIT_WARNING") void notifyHolders(al);
+    if (al.kind === "ENTRY") void pushAll(formatAlert(al), imInButton(al.mint));
+    else if (al.kind === "EXIT" || al.kind === "EXIT_WARNING") void notifyHolders(al);
   });
 
   const notifyHolders = async (al: Alert) => {
