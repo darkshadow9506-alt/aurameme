@@ -160,7 +160,8 @@ export function startTelegram(): Bot | null {
   });
 
   const notifyHolders = async (al: Alert) => {
-    const live = tracker.liveMcapOf(al.mint);
+    // prefer the live read; fall back to the mcap the alert itself carried
+    const live = tracker.liveMcapOf(al.mint) ?? al.marketCapSol ?? null;
     for (const pos of store.userPositionsForMint(al.mint)) {
       try {
         await bot.api.sendMessage(pos.chatId, formatUserExit(pos, al, live), {

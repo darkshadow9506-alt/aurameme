@@ -140,6 +140,9 @@ export class Tracker extends EventEmitter {
     const mcap = ev.marketCapSol ?? p.lastMcap;
     p.lastMcap = mcap;
     if (mcap > p.peakMcap) p.peakMcap = mcap;
+    // an entered position restored after a restart has no entry reference yet —
+    // seed it from the first live trade so stop/trailing/break-even can compute
+    if (p.entered && p.entryMcap == null && mcap > 0) p.entryMcap = mcap;
     // arm the break-even stop once the first take-profit level is reached
     if (p.entered && p.entryMcap && mcap >= p.entryMcap * p.firstTpMult) p.breakevenArmed = true;
     const now = ev.receivedAt;

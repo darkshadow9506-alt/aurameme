@@ -284,12 +284,26 @@ export function scoreToken(input: ScoreInput): Analysis {
   );
   const notBundled =
     !bf || ((bf.clusterCount ?? 0) <= 4 && (bf.sniperSupplyPct ?? 0) <= 25 && (bf.funderClusterSize ?? 0) < 4);
-  const realDemand = Boolean(
+  // Real demand can be proven two ways:
+  //  - launch path: early-window traction from the trade stream (bundleFacts)
+  //  - re-grade path (smart money buys an established token — bundleFacts are
+  //    gone by then): market activity from DexScreener. Without this branch,
+  //    conviction could never fire on "insiders are moving in NOW" re-grades.
+  const earlyDemand = Boolean(
     bf &&
       bf.earlyBuyerCount >= cv.minBuyers &&
       (bf.earlySolVolume ?? 0) >= cv.minSolVolume &&
       (bf.earlyBuys ?? 0) / Math.max(1, (bf.earlyBuys ?? 0) + (bf.earlySells ?? 0)) >= 0.6,
   );
+  const mBuys = market?.buys24h ?? 0;
+  const mSells = market?.sells24h ?? 0;
+  const marketDemand = Boolean(
+    market &&
+      mBuys >= 30 &&
+      mBuys / Math.max(1, mBuys + mSells) >= 0.55 &&
+      (market.volume24hUsd ?? 0) >= 10_000,
+  );
+  const realDemand = earlyDemand || marketDemand;
   const pumping = (bf?.earlyMarketCapSol ?? 0) >= cv.minMarketCapSol || (market?.liquidityUsd ?? 0) >= 8000;
   const bigMoneyIn = smartBuys.length > 0 || (bf?.earlySolVolume ?? 0) >= cv.minSolVolume * 1.6;
   const conviction =
@@ -297,7 +311,11 @@ export function scoreToken(input: ScoreInput): Analysis {
   if (conviction) {
     convictionReasons.push("✅ authorities renounced — no rug switches");
     convictionReasons.push("✅ organic holder spread (not insider-dominated)");
-    convictionReasons.push(`✅ real demand: ${bf?.earlyBuyerCount} buyers, ${(bf?.earlySolVolume ?? 0).toFixed(1)} SOL`);
+    convictionReasons.push(
+      earlyDemand
+        ? `✅ real demand: ${bf?.earlyBuyerCount} early buyers, ${(bf?.earlySolVolume ?? 0).toFixed(1)} SOL`
+        : `✅ real demand: ${mBuys} buys/24h, ${Math.round((market?.volume24hUsd ?? 0) / 1000)}K USD volume`,
+    );
     convictionReasons.push(smartBuys.length ? "✅ smart money is in" : "✅ whale-sized money in");
   }
 
