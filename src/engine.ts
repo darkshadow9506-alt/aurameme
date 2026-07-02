@@ -71,6 +71,13 @@ export class Engine extends EventEmitter {
     }, 60_000).unref();
 
     this.feed.start();
+
+    // Restore exit protection for positions users opened before a restart: the
+    // tracker is empty on boot, so re-watch and re-arm every open user position.
+    for (const mint of new Set(store.allUserPositions().map((p) => p.mint))) {
+      void this.ensureTracked(mint);
+    }
+
     log.ok("engine started — listening for new pump.fun tokens");
   }
 
@@ -238,6 +245,25 @@ export class Engine extends EventEmitter {
         }
       }
     }
+  }
+
+  /**
+   * Make sure a token is live-tracked with its exit triggers ARMED — used when
+   * a user taps "I'm in" and on startup to restore persisted positions. If the
+   * tracker doesn't know the token (evicted / restart), re-analyze and re-open.
+   */
+  async ensureTracked(mint: string): Promise<void> {
+    if (!tracker.isTracking(mint)) {
+      this.feed.watchToken(mint);
+      try {
+        const a = await this.analyzeMint(mint);
+        store.upsertAnalysis(a);
+        tracker.open(a);
+      } catch (e) {
+        log.warn(`ensureTracked(${mint.slice(0, 8)}) analyze failed:`, (e as Error).message);
+      }
+    }
+    tracker.markEntered(mint);
   }
 
   // ---- watchlist management used by Telegram commands ----

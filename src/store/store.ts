@@ -163,6 +163,9 @@ export class Store {
   userPositionsForChat(chatId: string): UserPosition[] {
     return [...this.userPos.values()].filter((p) => p.chatId === chatId);
   }
+  allUserPositions(): UserPosition[] {
+    return [...this.userPos.values()];
+  }
 
   async flush() {
     if (!this.dirty) return;

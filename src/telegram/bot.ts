@@ -178,6 +178,10 @@ export function startTelegram(): Bot | null {
   bot.callbackQuery(/^in:(.+)$/, async (ctx) => {
     const mint = ctx.match[1];
     const chatId = String(ctx.chat?.id ?? "");
+    await ctx.answerCallbackQuery({ text: "Tracking your position — sell plan below 👇" });
+    // make sure the token is live-tracked and its exit triggers are armed
+    // (handles taps on older signals and post-restart taps too)
+    await engine.ensureTracked(mint);
     const a = store.getAnalysis(mint);
     const prof = activeProfile();
     const entry = tracker.liveMcapOf(mint) ?? a?.bundleFacts?.earlyMarketCapSol ?? 0;
@@ -194,7 +198,6 @@ export function startTelegram(): Bot | null {
       peakMcapSol: entry,
     });
     const pos = store.getUserPosition(chatId, mint)!;
-    await ctx.answerCallbackQuery({ text: "Tracking your position — sell plan below 👇" });
     await ctx.reply(formatExitPlan(pos, tracker.liveMcapOf(mint)), {
       parse_mode: "HTML",
       link_preview_options: { is_disabled: true },

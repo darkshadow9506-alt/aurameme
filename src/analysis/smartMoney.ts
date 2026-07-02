@@ -43,8 +43,14 @@ export function classifyWalletTrade(ev: PumpEvent): SmartMoneyHit | null {
  * the smart table for that token's signals.
  */
 const creators = new Map<string, string>(); // mint -> creator wallet
+const MAX_CREATORS = 5000; // bound memory on the launch firehose (FIFO eviction)
 export function noteCreator(mint: string, wallet?: string) {
-  if (wallet) creators.set(mint, wallet);
+  if (!wallet) return;
+  creators.set(mint, wallet);
+  if (creators.size > MAX_CREATORS) {
+    const oldest = creators.keys().next().value;
+    if (oldest !== undefined) creators.delete(oldest);
+  }
 }
 export function creatorOf(mint: string): string | undefined {
   return creators.get(mint);

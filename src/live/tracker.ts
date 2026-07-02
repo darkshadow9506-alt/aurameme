@@ -62,7 +62,20 @@ export class Tracker extends EventEmitter {
 
   /** Begin tracking a token using the analysis we just produced. */
   open(a: Analysis) {
-    if (this.positions.has(a.mint)) return;
+    const existing = this.positions.get(a.mint);
+    if (existing) {
+      // refresh the grade, and if this re-grade is a conviction signal, arm the
+      // exit triggers on the already-tracked position (it used to stay dormant).
+      existing.verdict = a.verdict;
+      existing.score = a.score;
+      if (a.conviction && !existing.entered) {
+        existing.entered = true;
+        existing.entryAlerted = true;
+        existing.entryMcap ??=
+          existing.lastMcap > 0 ? existing.lastMcap : (a.bundleFacts?.earlyMarketCapSol ?? null);
+      }
+      return;
+    }
     if (this.positions.size >= config.live.trackMaxTokens) this.evictOldest();
 
     // All live prices come from the trade stream's `marketCapSol`. Start the
@@ -104,6 +117,19 @@ export class Tracker extends EventEmitter {
   /** current live market cap (SOL) of a tracked token, for entry references */
   liveMcapOf(mint: string): number | null {
     return this.positions.get(mint)?.lastMcap ?? null;
+  }
+
+  /**
+   * Arm the exit triggers for a token the user says they're in (the sell path
+   * ignores tokens we never "entered"). Called when someone taps "I'm in".
+   */
+  markEntered(mint: string): boolean {
+    const p = this.positions.get(mint);
+    if (!p || p.exited) return false;
+    p.entered = true;
+    p.entryAlerted = true;
+    if (p.entryMcap == null && p.lastMcap > 0) p.entryMcap = p.lastMcap;
+    return true;
   }
 
   /** Feed a realtime trade for a tracked token. */

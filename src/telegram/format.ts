@@ -24,7 +24,8 @@ export function formatSignal(a: Analysis): string {
   lines.push(title);
   lines.push(`Verdict: <b>${a.verdict.replace("_", " ")}</b>  •  Score: <b>${a.score}/100</b>`);
   lines.push(`<code>${a.mint}</code>`);
-  if (a.convictionReasons.length) {
+  // optional-chained: analyses persisted before this field existed lack it
+  if (a.convictionReasons?.length) {
     lines.push("");
     lines.push("<b>Why this passed the filter:</b>");
     for (const r of a.convictionReasons) lines.push(esc(r));
