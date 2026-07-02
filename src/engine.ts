@@ -96,10 +96,11 @@ export class Engine extends EventEmitter {
     this.pending.delete(ev.mint);
     const { facts: bundleFacts, buyers } = this.collector.finalize(ev.mint);
 
-    // Firehose control: a token that attracted ZERO buys in the observation
-    // window is dead on arrival — skip it so we don't waste rate-limited API
-    // calls (and risk a free RPC tier) on launches nobody touched.
-    if (bundleFacts.earlyBuyerCount === 0) {
+    // Firehose control: a launch with almost no distinct buyers is dead on
+    // arrival — it can never reach a conviction signal (needs 10+), so don't
+    // spend rate-limited (credit-metered) API calls on it. This is the main
+    // lever that keeps a free Helius key alive: most launches die right here.
+    if (bundleFacts.earlyBuyerCount < config.engine.minBuyersToAnalyze) {
       this.feed.unwatchToken(ev.mint);
       return;
     }

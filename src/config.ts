@@ -58,6 +58,9 @@ export const config = {
     enableFunderCluster: str("ENABLE_FUNDER_CLUSTER", "0") !== "0",
     /** max tokens analyzed at once; extra launches are dropped under a burst. */
     maxGradingInflight: num("MAX_GRADING_INFLIGHT", 25),
+    /** skip the (credit-metered) full analysis for launches with fewer early
+     *  buyers than this — they can never reach a signal anyway. */
+    minBuyersToAnalyze: num("MIN_BUYERS_TO_ANALYZE", 3),
   },
   /** max simultaneous outbound API requests (protects free RPC tiers & the VPN). */
   maxConcurrentRequests: num("MAX_CONCURRENT_REQUESTS", 5),
