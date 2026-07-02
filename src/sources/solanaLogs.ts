@@ -18,8 +18,13 @@ const disc = (name: string) =>
 const CREATE_DISC = disc("CreateEvent");
 const TRADE_DISC = disc("TradeEvent");
 
-/** Derive the websocket URL from the configured HTTP RPC URL. */
+/**
+ * Websocket URL for the feed. Prefers the dedicated FEED_RPC_WSS_URL (so the
+ * high-volume stream can run on a free/public RPC while the metered analysis
+ * RPC stays cheap); otherwise derives from the configured HTTP RPC URL.
+ */
 function wssUrl(): string {
+  if (config.feedRpcWssUrl) return config.feedRpcWssUrl;
   const u = config.solanaRpcUrl;
   if (u.startsWith("https://")) return "wss://" + u.slice(8);
   if (u.startsWith("http://")) return "ws://" + u.slice(7);
@@ -127,7 +132,19 @@ export class SolanaLogsFeed extends EventEmitter {
       setTimeout(() => this.connect(), this.reconnectDelay);
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30_000);
     });
-    ws.on("error", (e) => log.error("ws error:", (e as Error).message));
+    ws.on("error", (e) => {
+      const msg = (e as Error).message;
+      log.error("ws error:", msg);
+      if (msg.includes("429")) {
+        // quota exhausted / rate-limited: hammering every few seconds only digs
+        // the hole deeper — back off for several minutes between attempts.
+        this.reconnectDelay = Math.max(this.reconnectDelay, 300_000);
+        log.warn(
+          "RPC returned 429 (quota/rate limit) — backing off 5min. " +
+            "Check your Helius usage, or point FEED_RPC_WSS_URL at a free RPC (e.g. wss://api.mainnet-beta.solana.com).",
+        );
+      }
+    });
   }
 
   private onMessage(text: string) {

@@ -232,6 +232,7 @@ SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=کلیدت
 | مشکل | علت / راه‌حل |
 |---|---|
 | `pumpportal ETIMEDOUT` | سرورِ VPNت اون رو بلاک کرده → یا سرور VPN عوض کن، یا `FEED_SOURCE=solana` بذار (بالا👆) |
+| `ws error: 429` روی solana-logs | **سهمیه‌ی Helius تموم شده** (استریمِ لاگ‌ها پرمصرفه). راه‌حل: تو `.env` بذار `FEED_RPC_WSS_URL=wss://api.mainnet-beta.solana.com` تا استریم بره روی RPC عمومیِ رایگان و Helius فقط برای آنالیز بمونه. اگه بازم نشد، یه کلید Helius جدید بگیر. راهِ پایدارِ همیشگی: VPS + pumpportal |
 | `HTTP 403` تو لاگ | VPN وصل نیست یا سرورش بلاکه → VPN رو وصل/عوض کن |
 | ربات تو تلگرام جواب نمی‌ده | توکن غلطه، یا VPN قطعه → `.env` و VPN رو چک کن |
 | `Telegram failed to start` | `TELEGRAM_BOT_TOKEN` اشتباهه → از BotFather دوباره بگیر |

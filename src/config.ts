@@ -33,6 +33,11 @@ export const config = {
   // Realtime feed: "pumpportal" (default) or "solana" (direct RPC program logs,
   // for when pumpportal.fun is blocked from your VPN exit).
   feedSource: str("FEED_SOURCE", "pumpportal"),
+  // Optional SEPARATE websocket RPC for the high-volume program-logs feed, so
+  // the firehose doesn't burn your (credit-metered) analysis RPC. Example:
+  //   wss://api.mainnet-beta.solana.com
+  // Empty => derive from SOLANA_RPC_URL as before.
+  feedRpcWssUrl: str("FEED_RPC_WSS_URL"),
   // Optional indexers — unlock accurate holder counts & funder clustering.
   heliusApiKey: str("HELIUS_API_KEY"),
   birdeyeApiKey: str("BIRDEYE_API_KEY"),
