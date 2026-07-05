@@ -23,7 +23,9 @@ export function startTelegram(): Bot | null {
     return null;
   }
 
-  const bot = new Bot(config.telegram.token);
+  // timeoutSeconds keeps a black-holed connection from hanging silently for
+  // minutes — failures surface as loggable errors instead of dead air.
+  const bot = new Bot(config.telegram.token, { client: { timeoutSeconds: 20 } });
 
   bot.command("start", (ctx) =>
     ctx.reply(
@@ -238,10 +240,29 @@ export function startTelegram(): Bot | null {
   });
 
   bot.catch((err) => log.error("bot error:", err.message));
+  // Silence watchdog: if Telegram hasn't confirmed within 25s, say so loudly —
+  // a black-holed api.telegram.org (VPN exit blocking it) used to look like
+  // a healthy boot with a mysteriously deaf bot.
+  const silence = setTimeout(
+    () =>
+      log.error(
+        "Telegram: no answer from api.telegram.org after 25s — your VPN exit is " +
+          "likely blocking it. The bot can't receive commands until this connects. " +
+          "Try another VPN server, then restart.",
+      ),
+    25_000,
+  );
+  silence.unref();
+
   // bot.start() long-polls; if it rejects, keep the process alive and log a
   // diagnosis the user can act on (the engine + web keep running regardless).
   bot
-    .start({ onStart: (i) => log.ok(`Telegram bot @${i.username} online`) })
+    .start({
+      onStart: (i) => {
+        clearTimeout(silence);
+        log.ok(`Telegram bot @${i.username} online`);
+      },
+    })
     .catch((e) => {
       const msg = (e as Error)?.message ?? String(e);
       if (msg.includes("409")) {
