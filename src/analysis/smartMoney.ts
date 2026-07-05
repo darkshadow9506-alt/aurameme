@@ -27,6 +27,13 @@ export function classifyWalletTrade(ev: PumpEvent): SmartMoneyHit | null {
   const known = store.isSmart(ev.traderPublicKey);
   if (!known) return null;
   const total = known.wins + known.losses;
+  // Auto-discovered wallets must EARN trust before their trades count as a
+  // signal: one lucky round-trip also matches scalper bots that churn every
+  // launch (observed live: "discovered" wallets buying+selling junk every
+  // second). Seed/manual wallets are trusted by the user from the start.
+  if (known.label === "discovered") {
+    if (total < 2 || known.wins < known.losses || known.pnlSol <= 0) return null;
+  }
   const winRate = total > 0 ? known.wins / total : 0;
   return {
     wallet: ev.traderPublicKey,

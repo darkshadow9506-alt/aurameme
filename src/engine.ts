@@ -39,6 +39,10 @@ export class Engine extends EventEmitter {
   /** how many tokens are mid-analysis right now (back-pressure for the firehose) */
   private grading = 0;
   private stats = { graded: 0, signals: 0, alerts: 0 };
+  /** last full re-grade per mint — smart wallets trade every second, and each
+   *  re-grade costs 4-5 metered API calls; once per window is plenty. */
+  private regradeAt = new Map<string, number>();
+  private static REGRADE_COOLDOWN_MS = 120_000;
 
   start() {
     // seed smart-money watch list
@@ -228,18 +232,27 @@ export class Engine extends EventEmitter {
     const wasTracking = tracker.isTracking(ev.mint);
     if (!wasTracking) this.feed.watchToken(ev.mint);
 
-    // Re-grade the token now that smart money touched it, so the signal carries
-    // the smart-money context.
-    try {
-      const a = await this.analyzeMint(ev.mint, {
-        name: ev.name,
-        symbol: ev.symbol,
-        smartMoney: [hit],
-      });
-      this.publish(a);
-      if (isTrackable(a)) tracker.open(a);
-    } catch {
-      /* ignore re-grade errors */
+    // Re-grade at most once per cooldown window per mint: active wallets fire
+    // several trades per second, and each full re-grade costs metered API
+    // calls (observed live: the same mint re-analyzed 6x in 25s).
+    const lastRegrade = this.regradeAt.get(ev.mint) ?? 0;
+    if (Date.now() - lastRegrade >= Engine.REGRADE_COOLDOWN_MS) {
+      this.regradeAt.set(ev.mint, Date.now());
+      if (this.regradeAt.size > 5000) {
+        const cutoff = Date.now() - Engine.REGRADE_COOLDOWN_MS;
+        for (const [m, t] of this.regradeAt) if (t < cutoff) this.regradeAt.delete(m);
+      }
+      try {
+        const a = await this.analyzeMint(ev.mint, {
+          name: ev.name,
+          symbol: ev.symbol,
+          smartMoney: [hit],
+        });
+        this.publish(a);
+        if (isTrackable(a)) tracker.open(a);
+      } catch {
+        /* ignore re-grade errors */
+      }
     }
     // Deliver THIS trade to the tracker only on first touch. Once the token is
     // tracked it's also subscribed, so the "trade" stream delivers every
@@ -308,8 +321,9 @@ export class Engine extends EventEmitter {
 function isTrackable(a: Analysis): boolean {
   // never follow a token you might not be able to sell
   if (a.mintFacts && !a.mintFacts.freezeAuthorityRenounced) return false;
-  // smart money already in, or a genuinely good grade → follow
-  if (a.smartMoney.length > 0) return true;
+  // smart money BUYING justifies a follow — a smart SELL on a token we don't
+  // hold is the opposite of a reason to start watching it
+  if (a.smartMoney.some((s) => s.action === "buy")) return true;
   if (a.verdict !== "AVOID" && a.verdict !== "RISKY") return true;
   // otherwise follow anything with real early traction (catch the whale entry)
   const bf = a.bundleFacts;
