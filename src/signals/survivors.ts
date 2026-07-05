@@ -35,10 +35,15 @@ interface BoostEntry {
 }
 
 const RESIGNAL_COOLDOWN_MS = 24 * 3600_000;
+/** a candidate that was analyzed and did NOT qualify isn't re-checked for this
+ *  long — spreads coverage across the whole history instead of re-burning API
+ *  calls on the same 25 dead tokens every scan. */
+const RECHECK_COOLDOWN_MS = 90 * 60_000;
 
 export class SurvivorScanner {
   private deps: Deps | null = null;
   private signaled = new Map<string, number>(); // mint -> last signal ts
+  private checked = new Map<string, number>(); // mint -> last analyzed ts
   private timer: NodeJS.Timeout | null = null;
 
   start(deps: Deps) {
@@ -62,6 +67,7 @@ export class SurvivorScanner {
     let hits = 0;
     for (const mint of candidates) {
       try {
+        this.checked.set(mint, Date.now());
         const a = await this.deps.analyze(mint);
         if (this.qualifies(a)) {
           this.signaled.set(mint, Date.now());
@@ -105,12 +111,12 @@ export class SurvivorScanner {
     if (!a.mintFacts?.freezeAuthorityRenounced || !a.mintFacts?.mintAuthorityRenounced)
       return false;
 
-    // organic, broad holder base
+    // organic, broad holder base — REQUIRED. A survivor signal claims verified
+    // safety, so "couldn't read holder data" is a rejection, not a pass.
     const hf = a.holderFacts;
-    if (hf) {
-      if (hf.topHolderPct > 25 || hf.top10Pct > 55) return false;
-      if (hf.holderCount != null && hf.holderCount < s.minHolders) return false;
-    }
+    if (!hf) return false;
+    if (hf.topHolderPct > 25 || hf.top10Pct > 55) return false;
+    if (hf.holderCount != null && hf.holderCount < s.minHolders) return false;
 
     // breaking out NOW, with real buy pressure — but not already parabolic
     const h1 = m.priceChange.h1 ?? 0;
@@ -141,23 +147,20 @@ export class SurvivorScanner {
     return out;
   }
 
+  /** eligible = not signaled in 24h AND not already checked in the last 90min */
+  private eligible(mint: string): boolean {
+    const now = Date.now();
+    if (now - (this.signaled.get(mint) ?? 0) < RESIGNAL_COOLDOWN_MS) return false;
+    if (now - (this.checked.get(mint) ?? 0) < RECHECK_COOLDOWN_MS) return false;
+    return true;
+  }
+
   private async gatherCandidates(): Promise<string[]> {
     const out = new Set<string>();
     const cap = config.survivor.candidatesPerScan;
 
-    // 1) our own graded history: launches old enough to have proven themselves
-    const minAgeMs = config.survivor.minAgeHours * 3600_000;
-    for (const a of store.recentAnalyses(1500)) {
-      if (out.size >= cap) break;
-      const age = Date.now() - a.scoredAt;
-      if (age < minAgeMs) continue;
-      if (a.verdict === "AVOID") continue; // known-bad at launch stays out
-      const last = this.signaled.get(a.mint) ?? 0;
-      if (Date.now() - last < RESIGNAL_COOLDOWN_MS) continue;
-      out.add(a.mint);
-    }
-
-    // 2) DexScreener attention feeds (boosted/profiled tokens on Solana)
+    // 1) DexScreener attention feeds FIRST (boosted/profiled Solana tokens) —
+    //    these are alive and gaining attention right now, the best candidates.
     for (const path of ["/token-boosts/latest/v1", "/token-profiles/latest/v1"]) {
       if (out.size >= cap) break;
       try {
@@ -166,14 +169,29 @@ export class SurvivorScanner {
         const list = (await res.json()) as BoostEntry[];
         for (const e of Array.isArray(list) ? list : []) {
           if (out.size >= cap) break;
-          if (e.chainId === "solana" && e.tokenAddress) {
-            const last = this.signaled.get(e.tokenAddress) ?? 0;
-            if (Date.now() - last >= RESIGNAL_COOLDOWN_MS) out.add(e.tokenAddress);
-          }
+          if (e.chainId === "solana" && e.tokenAddress && this.eligible(e.tokenAddress))
+            out.add(e.tokenAddress);
         }
       } catch (e) {
         log.debug(`candidates ${path} failed:`, (e as Error).message);
       }
+    }
+
+    // 2) our own graded history: launches old enough to have proven themselves.
+    //    The recheck cooldown rotates coverage through the whole history
+    //    instead of re-analyzing the same first slice every scan.
+    const minAgeMs = config.survivor.minAgeHours * 3600_000;
+    for (const a of store.recentAnalyses(1500)) {
+      if (out.size >= cap) break;
+      if (Date.now() - a.scoredAt < minAgeMs) continue;
+      if (a.verdict === "AVOID") continue; // known-bad at launch stays out
+      if (this.eligible(a.mint)) out.add(a.mint);
+    }
+
+    // bound the cooldown maps (they only ever grow otherwise)
+    if (this.checked.size > 20_000) {
+      const cutoff = Date.now() - RECHECK_COOLDOWN_MS;
+      for (const [m, t] of this.checked) if (t < cutoff) this.checked.delete(m);
     }
 
     return [...out].slice(0, cap);

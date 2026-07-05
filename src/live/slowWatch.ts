@@ -45,6 +45,10 @@ export class SlowWatch {
   async tick(): Promise<void> {
     if (!this.emit) return;
     const positions = store.allUserPositions();
+    // prune first-TP markers for positions that no longer exist, so a future
+    // re-entry into the same token gets its warning again
+    const liveKeys = new Set(positions.map((p) => `${p.chatId}:${p.mint}`));
+    for (const k of this.tpWarned) if (!liveKeys.has(k)) this.tpWarned.delete(k);
     if (!positions.length) return;
 
     // one fetch per unique mint, shared across users in the same token

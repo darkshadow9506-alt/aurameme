@@ -153,8 +153,16 @@ export function formatExitPlan(pos: UserPosition, currentMcapSol?: number | null
   }
   lines.push("");
   lines.push("🎯 <b>Take profit — sell in pieces:</b>");
+  const pUsd = pos.entryPriceUsd ?? null;
   for (const t of pos.takeProfits) {
-    const at = e > 0 ? ` (≈ ${(e * t.multiple).toFixed(0)} SOL mc)` : "";
+    // concrete level for THIS coin: USD price target when we have it (survivor
+    // tokens on Raydium), else the SOL market-cap level (curve tokens)
+    const at =
+      pUsd && pUsd > 0
+        ? ` (≈ $${(pUsd * t.multiple).toPrecision(3)})`
+        : e > 0
+          ? ` (≈ ${(e * t.multiple).toFixed(0)} SOL mc)`
+          : "";
     const plusPct = `+${Math.round((t.multiple - 1) * 100)}%`;
     lines.push(`• at <b>${t.multiple}x</b> (${plusPct})${at} → sell <b>${t.sellPct}%</b>`);
   }
