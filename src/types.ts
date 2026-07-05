@@ -177,6 +177,8 @@ export interface Analysis {
   /** the strict "safe + organic demand + whale/insider-backed + pumping" gate */
   conviction: boolean;
   convictionReasons: string[];
+  /** LAUNCH = fresh pump.fun snipe path; SURVIVOR = aged, proven token breaking out */
+  signalKind?: "LAUNCH" | "SURVIVOR";
   mintFacts?: MintFacts;
   holderFacts?: HolderFacts;
   marketFacts?: MarketFacts;

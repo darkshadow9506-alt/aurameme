@@ -18,7 +18,12 @@ function esc(s: string): string {
 export function formatSignal(a: Analysis): string {
   const m = a.marketFacts;
   const lines: string[] = [];
-  const head = a.conviction ? "🔥 HIGH-CONVICTION SIGNAL" : VERDICT_EMOJI[a.verdict];
+  const head =
+    a.signalKind === "SURVIVOR"
+      ? "🦅 SURVIVOR BREAKOUT — proven token, pre-explosion"
+      : a.conviction
+        ? "🔥 HIGH-CONVICTION SIGNAL"
+        : VERDICT_EMOJI[a.verdict];
   const title = `${head} <b>${esc(a.name ?? a.symbol ?? "Unknown")}</b>` +
     (a.symbol ? ` <code>$${esc(a.symbol)}</code>` : "");
   lines.push(title);

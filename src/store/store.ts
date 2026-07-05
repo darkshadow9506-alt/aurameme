@@ -31,6 +31,11 @@ export interface UserPosition {
   takeProfits: { multiple: number; sellPct: number }[];
   /** peak market cap seen since entry, for the trailing readout */
   peakMcapSol: number;
+  // --- USD references for tokens traded off the bonding curve (survivors on
+  //     Raydium/PumpSwap). The slow poll-based watcher uses these for exits.
+  entryPriceUsd?: number | null;
+  peakPriceUsd?: number | null;
+  entryLiqUsd?: number | null;
 }
 
 interface Snapshot {
@@ -43,7 +48,9 @@ const upKey = (chatId: string, mint: string) => `${chatId}:${mint}`;
 
 const DATA_DIR = path.resolve(process.cwd(), "data");
 const FILE = path.join(DATA_DIR, "store.json");
-const MAX_ANALYSES = 500;
+// Keep a couple of days of graded launches: the survivor scanner re-examines
+// tokens we graded earlier, so history depth = how far back it can look.
+const MAX_ANALYSES = 1500;
 
 export class Store {
   private analyses = new Map<string, Analysis>();
@@ -147,6 +154,13 @@ export class Store {
   // ---- per-user positions (Telegram "I'm in" flow) ----
   openUserPosition(p: UserPosition) {
     this.userPos.set(upKey(p.chatId, p.mint), p);
+    this.dirty = true;
+  }
+  /** merge partial updates (e.g. the slow watcher advancing peakPriceUsd) */
+  updateUserPosition(chatId: string, mint: string, patch: Partial<UserPosition>) {
+    const p = this.userPos.get(upKey(chatId, mint));
+    if (!p) return;
+    Object.assign(p, patch);
     this.dirty = true;
   }
   getUserPosition(chatId: string, mint: string) {

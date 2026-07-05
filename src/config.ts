@@ -88,6 +88,24 @@ export const config = {
     maxTop10Pct: num("CONVICTION_MAX_TOP10_PCT", 65),
     minMarketCapSol: num("CONVICTION_MIN_MCAP_SOL", 42),
   },
+  /** Survivor scanner: finds AGED tokens (hours-days old) that stayed alive,
+   *  built real holders/liquidity, verified safe, and are starting to break
+   *  out — the "ANSEM-type" play, before the main explosion. */
+  survivor: {
+    enabled: str("SURVIVOR_ENABLED", "1") !== "0",
+    scanEveryMin: num("SURVIVOR_SCAN_MIN", 10),
+    minAgeHours: num("SURVIVOR_MIN_AGE_H", 12),
+    minLiquidityUsd: num("SURVIVOR_MIN_LIQ_USD", 25_000),
+    minVolume24hUsd: num("SURVIVOR_MIN_VOL_USD", 100_000),
+    minHolders: num("SURVIVOR_MIN_HOLDERS", 150),
+    maxMarketCapUsd: num("SURVIVOR_MAX_MCAP_USD", 2_000_000),
+    minH1Pct: num("SURVIVOR_MIN_H1_PCT", 5),
+    candidatesPerScan: num("SURVIVOR_CANDIDATES_PER_SCAN", 25),
+  },
+  /** Push raw whale-entry pings for fresh launches to Telegram. Default OFF —
+   *  they include unproven 5-minute-old tokens; survivors+conviction are the
+   *  quality feed. */
+  pushWhaleEntries: str("PUSH_WHALE_ENTRIES", "0") !== "0",
   dryRun: str("DRY_RUN", "1") !== "0",
 } as const;
 

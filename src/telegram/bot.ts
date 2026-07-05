@@ -153,13 +153,15 @@ export function startTelegram(): Bot | null {
   // "I'm in" button — the safest, whale/demand-backed, explosive picks.
   engine.on("signal", (a: Analysis) => void pushAll(formatSignal(a), imInButton(a.mint)));
 
-  // Whale ENTRY alerts are now strict (>=WHALE_BUY_SOL single buy, token not
-  // AVOID, once per token) — rare and meaningful, so push them with the button.
-  // (Ritz case: a detected whale entry 10x'd but only the dashboard saw it.)
-  // Exits stay personalized: only users who tapped "I'm in" get them.
+  // Raw whale ENTRY pings cover unproven fresh launches, so they're OFF by
+  // default (PUSH_WHALE_ENTRIES=1 re-enables). The quality Telegram feed is:
+  // conviction signals + survivor breakouts + personalized exits.
   engine.on("alert", (al: Alert) => {
-    if (al.kind === "ENTRY") void pushAll(formatAlert(al), imInButton(al.mint));
-    else if (al.kind === "EXIT" || al.kind === "EXIT_WARNING") void notifyHolders(al);
+    if (al.kind === "ENTRY") {
+      if (config.pushWhaleEntries) void pushAll(formatAlert(al), imInButton(al.mint));
+    } else if (al.kind === "EXIT" || al.kind === "EXIT_WARNING") {
+      void notifyHolders(al);
+    }
   });
 
   const notifyHolders = async (al: Alert) => {
@@ -200,6 +202,11 @@ export function startTelegram(): Bot | null {
       trailingStopPct: a?.exit.trailingStopPct ?? prof.trailingStopPct,
       takeProfits: a?.exit.takeProfits ?? prof.takeProfits,
       peakMcapSol: entry,
+      // USD refs so the slow (DexScreener-poll) watcher can guard exits for
+      // tokens that trade off the bonding curve (survivor signals)
+      entryPriceUsd: a?.marketFacts?.priceUsd ?? null,
+      peakPriceUsd: a?.marketFacts?.priceUsd ?? null,
+      entryLiqUsd: a?.marketFacts?.liquidityUsd ?? null,
     });
     const pos = store.getUserPosition(chatId, mint)!;
     await ctx.reply(formatExitPlan(pos, tracker.liveMcapOf(mint)), {

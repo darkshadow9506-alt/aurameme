@@ -20,6 +20,39 @@ export interface StrategyInput {
  * rules* that tilt the odds, size positions sanely, and define mechanical exits
  * so you don't freeze when it moves. Always use money you can afford to lose.
  */
+/** Coin-specific take-profit ladder, scaled to how much room the cap leaves. */
+export function ladderForMarketCap(
+  mcapUsd: number | null | undefined,
+): { multiple: number; sellPct: number }[] | null {
+  if (!mcapUsd || !Number.isFinite(mcapUsd) || mcapUsd <= 0) return null;
+  if (mcapUsd < 150_000) {
+    // micro cap: real room to run — de-risk early, keep a fat moonbag
+    return [
+      { multiple: 1.8, sellPct: 20 },
+      { multiple: 3, sellPct: 25 },
+      { multiple: 6, sellPct: 25 },
+      { multiple: 12, sellPct: 15 },
+      { multiple: 30, sellPct: 10 },
+    ];
+  }
+  if (mcapUsd < 600_000) {
+    // mid cap: solid runners still 3-8x
+    return [
+      { multiple: 1.5, sellPct: 20 },
+      { multiple: 2.5, sellPct: 25 },
+      { multiple: 4, sellPct: 25 },
+      { multiple: 8, sellPct: 20 },
+    ];
+  }
+  // larger cap: each x is harder — bank gains sooner
+  return [
+    { multiple: 1.4, sellPct: 25 },
+    { multiple: 2, sellPct: 30 },
+    { multiple: 3, sellPct: 25 },
+    { multiple: 5, sellPct: 15 },
+  ];
+}
+
 export function buildEntryExit(input: StrategyInput): {
   entry: EntryPlan;
   exit: ExitPlan;
@@ -67,11 +100,11 @@ export function buildEntryExit(input: StrategyInput): {
   const entry: EntryPlan = { shouldEnter, reason, maxPositionPct, notes };
 
   // ----- EXIT -----
-  // The take-profit ladder comes from the active profile. The FIRST tier
-  // de-risks early so that, combined with moving the stop to break-even
-  // afterwards, most pumps that fade still close green — the main win-rate
-  // lever. Aggressive/moon profiles sell less early and let runners go.
-  const takeProfits = profile.takeProfits;
+  // The take-profit ladder is sized to THIS coin, not a fixed template: a
+  // $60K-cap coin has room to 10-30x, while doubling a $1M cap is already a
+  // big move — so the ladder tightens as the cap grows. When the cap is
+  // unknown (fresh bonding-curve token), fall back to the profile's ladder.
+  const takeProfits = ladderForMarketCap(marketFacts?.marketCapUsd) ?? profile.takeProfits;
   const firstTp = takeProfits[0]?.multiple ?? 1.5;
 
   // tighter stops for riskier setups, biased around the profile base

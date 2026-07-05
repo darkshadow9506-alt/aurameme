@@ -14,7 +14,9 @@ import {
 } from "./analysis/smartMoney.js";
 import { store } from "./store/store.js";
 import { tracker } from "./live/tracker.js";
-import type { Analysis, PumpEvent, SmartMoneyHit } from "./types.js";
+import { slowWatch } from "./live/slowWatch.js";
+import { survivorScanner } from "./signals/survivors.js";
+import type { Alert, Analysis, PumpEvent, SmartMoneyHit } from "./types.js";
 
 const log = makeLogger("engine");
 
@@ -71,6 +73,17 @@ export class Engine extends EventEmitter {
     }, 60_000).unref();
 
     this.feed.start();
+
+    // Survivor scanner: aged, proven tokens starting to break out (the
+    // "ANSEM-type" play) — published on the same quality-signal rail.
+    survivorScanner.start({
+      analyze: (mint) => this.analyzeMint(mint),
+      publish: (a) => this.publishSignal(a),
+    });
+
+    // Poll-based exit guard for user positions (works for tokens that migrated
+    // off the bonding curve, where the fast stream can't see trades).
+    slowWatch.start((al: Alert) => this.emit("alert", al));
 
     // Restore exit protection for positions users opened before a restart: the
     // tracker is empty on boot, so re-watch and re-arm every open user position.
@@ -190,12 +203,19 @@ export class Engine extends EventEmitter {
     // Only the strict, high-conviction picks become signals (a few a day) —
     // safe + organic demand + whale/smart money + pumping. Quality over quantity.
     if (a.conviction) {
-      this.stats.signals++;
-      log.ok(`🔥 CONVICTION SIGNAL ${a.score} — ${a.symbol ?? a.mint.slice(0, 8)}`);
-      this.emit("signal", a);
+      this.publishSignal(a);
     } else {
       log.debug(`graded ${a.verdict} ${a.score} — ${a.mint.slice(0, 8)}`);
     }
+  }
+
+  /** Publish a quality signal (launch conviction or survivor breakout). */
+  publishSignal(a: Analysis) {
+    store.upsertAnalysis(a);
+    this.stats.signals++;
+    const tag = a.signalKind === "SURVIVOR" ? "🦅 SURVIVOR" : "🔥 CONVICTION";
+    log.ok(`${tag} SIGNAL ${a.score} — ${a.symbol ?? a.mint.slice(0, 8)}`);
+    this.emit("signal", a);
   }
 
   private async onWalletTrade(ev: PumpEvent) {
