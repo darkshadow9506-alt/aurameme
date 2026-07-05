@@ -238,10 +238,23 @@ export function startTelegram(): Bot | null {
   });
 
   bot.catch((err) => log.error("bot error:", err.message));
-  // bot.start() long-polls; if the token is invalid it rejects — catch it so a
-  // bad token doesn't crash the whole process (engine + web keep running).
+  // bot.start() long-polls; if it rejects, keep the process alive and log a
+  // diagnosis the user can act on (the engine + web keep running regardless).
   bot
     .start({ onStart: (i) => log.ok(`Telegram bot @${i.username} online`) })
-    .catch((e) => log.error("Telegram failed to start (check token):", (e as Error).message));
+    .catch((e) => {
+      const msg = (e as Error)?.message ?? String(e);
+      if (msg.includes("409")) {
+        log.error(
+          "Telegram 409: ANOTHER copy of this bot is running with the same token " +
+            "(an old terminal or pm2). Only ONE can poll — close the other one " +
+            "(pm2 delete all / taskkill node) and restart.",
+        );
+      } else if (msg.includes("401")) {
+        log.error("Telegram 401: token rejected — re-copy TELEGRAM_BOT_TOKEN from @BotFather.");
+      } else {
+        log.error("Telegram failed/stopped:", msg);
+      }
+    });
   return bot;
 }
