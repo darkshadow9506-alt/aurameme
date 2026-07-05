@@ -26,11 +26,7 @@ export function startWeb() {
   });
 
   app.get("/api/signals", (_req, res) => {
-    res.json(
-      store
-        .recentAnalyses(200)
-        .filter((a) => a.score >= config.engine.signalMinScore),
-    );
+    res.json(store.recentAnalyses(1500).filter((a) => a.conviction));
   });
 
   app.get("/api/wallets", (_req, res) => res.json(store.allSmart()));

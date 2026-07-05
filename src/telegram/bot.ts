@@ -84,9 +84,11 @@ export function startTelegram(): Bot | null {
   });
 
   bot.command("signals", (ctx) => {
+    // conviction/survivor picks ARE the signals now (the old score>=70 filter
+    // predates that and silently hid them)
     const list = store
-      .recentAnalyses(60)
-      .filter((a) => a.score >= config.engine.signalMinScore)
+      .recentAnalyses(1500)
+      .filter((a) => a.conviction)
       .slice(0, 12);
     if (!list.length) return ctx.reply("No qualifying signals recently.");
     return ctx.reply(list.map(formatShort).join("\n"));
@@ -134,17 +136,29 @@ export function startTelegram(): Bot | null {
   });
 
   // ---- push to subscribers (optionally with an inline keyboard) ----
+  // Retries with backoff: a signal is the single most important message this
+  // bot sends — a transient network blip must NOT drop it (which is exactly
+  // what happened to the first live conviction signal).
+  const PUSH_RETRY_DELAYS_MS = [0, 5_000, 15_000, 45_000, 90_000];
   const pushAll = async (text: string, keyboard?: InlineKeyboard) => {
     for (const id of config.telegram.chatIds) {
-      try {
-        await bot.api.sendMessage(id, text, {
-          parse_mode: "HTML",
-          link_preview_options: { is_disabled: true },
-          reply_markup: keyboard,
-        });
-      } catch (e) {
-        log.warn(`push to ${id} failed:`, (e as Error).message);
+      let sent = false;
+      for (const delay of PUSH_RETRY_DELAYS_MS) {
+        if (delay) await new Promise((r) => setTimeout(r, delay));
+        try {
+          await bot.api.sendMessage(id, text, {
+            parse_mode: "HTML",
+            link_preview_options: { is_disabled: true },
+            reply_markup: keyboard,
+          });
+          sent = true;
+          break;
+        } catch (e) {
+          log.warn(`push to ${id} failed, will retry:`, (e as Error).message);
+        }
       }
+      if (!sent)
+        log.error(`push to ${id} FAILED after all retries — check /signals for missed ones.`);
     }
   };
 

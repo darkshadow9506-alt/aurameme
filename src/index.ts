@@ -1,3 +1,9 @@
+import dns from "node:dns";
+// Many VPN tunnels black-hole IPv6. Cloudflare-hosted APIs (Helius, DexScreener)
+// publish AAAA records, so Node tried IPv6 first and died with "fetch failed",
+// while IPv4-only api.telegram.org kept working. Force IPv4 first, always.
+dns.setDefaultResultOrder("ipv4first");
+
 import { config } from "./config.js";
 import { makeLogger } from "./util/logger.js";
 import { setupProxy } from "./net/proxy.js";
